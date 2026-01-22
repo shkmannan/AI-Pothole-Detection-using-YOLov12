@@ -1,1 +1,1 @@
-# AI-Pothole-Detection-using-YOLov12
+# AI-Pothole-Detection-using-YOLOv12
