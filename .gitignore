@@ -1,0 +1,18 @@
+.env
+.env.local
+__pycache__/
+*.py[cod]
+venv/
+env/
+# Data and Models
+data/
+datasets/
+*.pt
+*.pth
+runs/
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
