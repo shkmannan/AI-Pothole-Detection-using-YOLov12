@@ -1,9 +1,11 @@
-const API = {
+ï»¿const API = {
   baseUrl: "http://localhost:8000",
   image: "/detect/image",
   video: "/detect/video",
   cameraStart: "/detect/camera/start",
   cameraStop: "/detect/camera/stop",
+  cameraStatus: "/detect/camera/status",
+  cameraStream: "/detect/camera/stream",
   health: "/health",
 };
 
@@ -11,6 +13,9 @@ const logPanel = document.getElementById("logPanel");
 const resultList = document.getElementById("resultList");
 const confidence = document.getElementById("confidence");
 const confidenceValue = document.getElementById("confidenceValue");
+const detectedCount = document.getElementById("detectedCount");
+const resultsBadge = document.getElementById("resultsBadge");
+const apiStatus = document.getElementById("apiStatus");
 
 const imageInput = document.getElementById("imageInput");
 const imagePreview = document.getElementById("imagePreview");
@@ -20,7 +25,9 @@ const videoInput = document.getElementById("videoInput");
 const videoPreview = document.getElementById("videoPreview");
 const videoDetect = document.getElementById("videoDetect");
 
-const cameraPreview = document.getElementById("cameraPreview");
+const cameraUrl = document.getElementById("cameraUrl");
+const cameraStream = document.getElementById("cameraStream");
+const cameraPlaceholder = document.getElementById("cameraPlaceholder");
 const cameraStart = document.getElementById("cameraStart");
 const cameraStop = document.getElementById("cameraStop");
 
@@ -39,12 +46,32 @@ const log = (message, level = "info") => {
   logPanel.prepend(line);
 };
 
+const setApiStatusChip = (text, tone = "neutral") => {
+  apiStatus.textContent = text;
+  if (tone === "ok") {
+    apiStatus.style.background = "#ddf9e6";
+    apiStatus.style.borderColor = "#9fdcb2";
+    apiStatus.style.color = "#1e6a35";
+    return;
+  }
+  if (tone === "error") {
+    apiStatus.style.background = "#ffe4e4";
+    apiStatus.style.borderColor = "#f0b2b2";
+    apiStatus.style.color = "#8a2424";
+    return;
+  }
+  apiStatus.style.background = "#f2f6ff";
+  apiStatus.style.borderColor = "rgba(20, 44, 87, 0.18)";
+  apiStatus.style.color = "#2c4d89";
+};
+
 const setResults = (items) => {
   resultList.innerHTML = "";
   if (!items.length) {
     const empty = document.createElement("li");
     empty.textContent = "No detections returned. Try another run.";
     resultList.appendChild(empty);
+    resultsBadge.textContent = "No detections";
     return;
   }
   items.forEach((item) => {
@@ -52,6 +79,18 @@ const setResults = (items) => {
     li.textContent = item;
     resultList.appendChild(li);
   });
+  resultsBadge.textContent = "Run completed";
+};
+
+const showCameraState = (active, message) => {
+  if (active) {
+    cameraPlaceholder.style.display = "none";
+    cameraStream.style.display = "block";
+  } else {
+    cameraStream.style.display = "none";
+    cameraPlaceholder.style.display = "block";
+    cameraPlaceholder.textContent = message;
+  }
 };
 
 const updatePreview = (preview, file) => {
@@ -68,25 +107,64 @@ const updatePreview = (preview, file) => {
   } else {
     preview.textContent = `Selected: ${file.name}`;
   }
-
-  const media = preview.querySelector("img, video");
-  if (media) {
-    media.style.maxWidth = "100%";
-    media.style.borderRadius = "10px";
-  }
 };
 
 const callApi = async (path, options = {}) => {
   const url = `${API.baseUrl}${path}`;
   const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(`API error (${response.status})`);
+    let detail = `API error (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.detail) {
+        detail = data.detail;
+      }
+    } catch (_error) {
+      // Use default error text.
+    }
+    throw new Error(detail);
   }
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     return response.json();
   }
   return response.text();
+};
+
+const startCameraStream = async () => {
+  const streamPath = `${API.cameraStream}?t=${Date.now()}`;
+  cameraStream.onerror = () => {
+    showCameraState(false, "Stream disconnected");
+    state.cameraActive = false;
+    log("Live stream disconnected. Check camera URL and backend logs.", "error");
+  };
+  cameraStream.src = `${API.baseUrl}${streamPath}`;
+  showCameraState(true, "");
+};
+
+const stopCameraStream = () => {
+  cameraStream.removeAttribute("src");
+  cameraStream.src = "";
+  showCameraState(false, "Camera idle");
+};
+
+const refreshCameraStatus = async () => {
+  try {
+    const status = await callApi(API.cameraStatus);
+    state.cameraActive = Boolean(status.active);
+    if (status.camera_url) {
+      cameraUrl.value = status.camera_url;
+    }
+
+    if (state.cameraActive) {
+      await startCameraStream();
+      log("Reconnected to active camera stream.", "success");
+    } else {
+      stopCameraStream();
+    }
+  } catch (_error) {
+    stopCameraStream();
+  }
 };
 
 confidence.addEventListener("input", () => {
@@ -125,6 +203,10 @@ imageDetect.addEventListener("click", async () => {
       `Image saved: ${data.output ?? "output.jpg"}`,
     ]);
 
+    if (typeof data.count === "number") {
+      detectedCount.textContent = String(Number(detectedCount.textContent) + data.count);
+    }
+
     log("Image detection complete.", "success");
   } catch (error) {
     log(`Image detection failed: ${error.message}`, "error");
@@ -155,6 +237,10 @@ videoDetect.addEventListener("click", async () => {
       `Highlights: ${data.highlights ?? "n/a"}`,
     ]);
 
+    if (typeof data.count === "number") {
+      detectedCount.textContent = String(Number(detectedCount.textContent) + data.count);
+    }
+
     log("Video analysis complete.", "success");
   } catch (error) {
     log(`Video analysis failed: ${error.message}`, "error");
@@ -167,13 +253,31 @@ cameraStart.addEventListener("click", async () => {
     return;
   }
 
+  const source = cameraUrl.value.trim();
+  if (!source) {
+    log("Enter a camera URL before starting the stream.", "error");
+    return;
+  }
+
   log("Starting camera stream...");
   try {
-    await callApi(API.cameraStart, { method: "POST" });
+    const payload = {
+      camera_url: source,
+      confidence: Number(confidence.value),
+    };
+
+    await callApi(API.cameraStart, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
     state.cameraActive = true;
-    cameraPreview.textContent = "Camera running · awaiting detections";
+    await startCameraStream();
+    resultsBadge.textContent = "Live stream running";
     log("Camera stream started.", "success");
   } catch (error) {
+    stopCameraStream();
     log(`Failed to start camera: ${error.message}`, "error");
   }
 });
@@ -188,7 +292,8 @@ cameraStop.addEventListener("click", async () => {
   try {
     await callApi(API.cameraStop, { method: "POST" });
     state.cameraActive = false;
-    cameraPreview.textContent = "Camera idle";
+    stopCameraStream();
+    resultsBadge.textContent = "Stream stopped";
     log("Camera stream stopped.", "success");
   } catch (error) {
     log(`Failed to stop camera: ${error.message}`, "error");
@@ -199,8 +304,10 @@ healthButton.addEventListener("click", async () => {
   log("Checking API health...");
   try {
     const data = await callApi(API.health);
+    setApiStatusChip("API: Online", "ok");
     log(`API is healthy: ${JSON.stringify(data)}`, "success");
   } catch (error) {
+    setApiStatusChip("API: Offline", "error");
     log(`API health check failed: ${error.message}`, "error");
   }
 });
@@ -212,6 +319,7 @@ runDemo.addEventListener("click", () => {
     "Critical segments: NH-48, Sector 12",
     "Exported report: report_2026-03-06.csv",
   ]);
+  resultsBadge.textContent = "Demo mode";
   log("Demo data loaded.", "success");
 });
 
@@ -229,4 +337,6 @@ downloadReport.addEventListener("click", () => {
   log("Sample report downloaded.", "success");
 });
 
+showCameraState(false, "Camera idle");
+refreshCameraStatus();
 log("Ready to run detections.");

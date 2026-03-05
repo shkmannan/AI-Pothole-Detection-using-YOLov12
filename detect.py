@@ -6,7 +6,7 @@ model_path = r"C:\Users\sidharth sumeshdas\runs\detect\runs\detect\pothole_model
 model = YOLO(model_path)
 
 # -------- PHONE IP CAMERA --------
-url = "http://192.168.167.186:8080/video"
+url = "http://192.0.0.8:8080/video"
 
 print("Connecting to phone IP camera...")
 
