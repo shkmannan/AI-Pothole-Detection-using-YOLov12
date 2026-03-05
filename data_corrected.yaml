@@ -1,0 +1,6 @@
+path: C:\Users\shini\Documents\AI-Pothole-Detection-using-YOLov12\pothole-detection-1
+train: train/images
+val: valid/images
+
+nc: 2
+names: ['objects', 'potholes']

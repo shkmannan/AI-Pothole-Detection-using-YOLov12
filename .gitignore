@@ -1,0 +1,39 @@
+# Environment Variables - NEVER COMMIT!
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+venv/
+env/
+
+# Dataset (too large for GitHub)
+pothole-detection-*/
+data/
+datasets/
+
+# Model files (too large)
+runs/
+*.pt
+*.pth
+*.onnx
+weights/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+id
+*.tmp
