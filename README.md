@@ -1,293 +1,179 @@
-# PotholeAI - YOLOv12 Detection Frontend
+# Pothole Detection Frontend
 
-A professional, production-ready React frontend for AI-powered pothole detection using YOLOv12. This application provides an intuitive interface for uploading road images, running detection analysis, and visualizing results with detailed statistics.
+A modern React-based web application for pothole detection using AI-powered image analysis. This frontend integrates with the YOLOv12 backend to detect and analyze road surface defects, providing cost estimation and prioritization for municipal maintenance.
 
 ## Features
 
-- 🎯 **Real-time Detection**: Upload images and get instant pothole detection results
-- 📊 **Detailed Analytics**: View confidence scores, severity levels, and detection statistics
-- 🎨 **Professional UI**: Clean, responsive design built with Tailwind CSS
-- 🚀 **Performance Optimized**: Fast loading with smooth animations using Framer Motion
-- 📱 **Fully Responsive**: Works seamlessly on desktop, tablet, and mobile devices
-- 🔌 **API Ready**: Designed for easy integration with backend detection service
-
-## Tech Stack
-
-- **React 18** - Modern React with hooks
-- **React Router** - Client-side routing
-- **Tailwind CSS** - Utility-first styling
-- **Framer Motion** - Smooth animations
-- **Canvas API** - Bounding box rendering
+- **Image Upload & Detection** - Upload road images for real-time pothole detection
+- **Dark Mode Support** - Toggle between light and dark themes for comfortable viewing
+- **Detection Visualization** - Interactive canvas displaying detected potholes with bounding boxes
+- **Cost Estimation** - Automatic calculation of repair costs based on detected pothole characteristics
+- **Health Index** - Road condition assessment and health score calculation
+- **Municipality Dashboard** - Manage and prioritize pothole repairs across regions
+- **Predictive Analytics** - ML-based predictions for future road deterioration
+- **Prioritization System** - Smart ranking of repair locations based on severity and risk factors
 
 ## Project Structure
 
 ```
-pothole-detection-frontend/
-├── public/
-│   └── index.html
-├── src/
-│   ├── components/
-│   │   ├── Header.js              # Navigation header
-│   │   ├── ImageUpload.js         # Drag-and-drop upload
-│   │   ├── DetectionCanvas.js     # Canvas with bounding boxes
-│   │   ├── DetectionResults.js    # Statistics and analysis
-│   │   └── ProcessingLoader.js    # Loading indicator
-│   ├── pages/
-│   │   ├── Home.js                # Landing page
-│   │   └── Detection.js           # Main detection interface
-│   ├── services/
-│   │   └── detectionService.js    # API service (mock data)
-│   ├── utils/
-│   │   └── helpers.js             # Utility functions
-│   ├── App.js                     # Main app component
-│   ├── index.js                   # Entry point
-│   └── index.css                  # Global styles
-├── package.json
-├── tailwind.config.js
-└── README.md
+src/
+├── components/
+│   ├── DarkModeToggle.js       # Theme switching component
+│   ├── DetectionCanvas.js       # Visualization of detected potholes
+│   ├── DetectionResults.js      # Results display component
+│   ├── Header.js                # Application header
+│   ├── ImageUpload.js           # Image upload interface
+│   ├── ProcessingLoader.js      # Loading indicator
+│   └── ViewModeToggle.js        # View mode switcher
+├── context/
+│   └── AppContext.js            # Global application state
+├── pages/
+│   ├── Home.js                  # Landing page
+│   ├── Detection.js             # Detection interface
+│   └── MunicipalityDashboard.js # Admin dashboard
+├── services/
+│   └── detectionService.js      # Backend API integration
+├── utils/
+│   ├── costEstimator.js         # Cost calculation logic
+│   ├── healthIndex.js           # Health score calculation
+│   ├── helpers.js               # Utility functions
+│   ├── predictiveModel.js       # Predictive analytics
+│   └── prioritization.js        # Repair prioritization logic
+├── App.js                       # App root component
+├── index.js                     # React entry point
+└── index.css                    # Global styles
 ```
 
-## Getting Started
+## Prerequisites
 
-### Prerequisites
+- Node.js (v14.0.0 or higher)
+- npm (v6.0.0 or higher)
+- Modern web browser with JavaScript enabled
 
-- Node.js (v14 or higher)
-- npm or yarn
+## Installation
 
-### Installation
+1. **Clone the repository**
 
-1. **Clone or download the project**
+   ```bash
+   git clone <repository-url>
+   cd pothole-detection-frontend
+   ```
 
 2. **Install dependencies**
+
    ```bash
-   cd pothole-detection-frontend
    npm install
    ```
 
-3. **Start the development server**
-   ```bash
-   npm start
+3. **Configure environment variables**
+
+   Create a `.env` file in the root directory:
+
+   ```env
+   REACT_APP_API_URL=http://localhost:5000/api
    ```
 
-4. **Open in browser**
-   - Navigate to `http://localhost:3000`
-   - The app will automatically reload on code changes
+## Usage
 
-### Build for Production
+### Development Server
+
+Start the development server with hot reload:
+
+```bash
+npm start
+```
+
+The application will open at `http://localhost:3000`
+
+### Building for Production
+
+Create an optimized production build:
 
 ```bash
 npm run build
 ```
 
-This creates an optimized production build in the `build/` folder.
+Output files will be in the `build/` directory.
 
-## Backend Integration
+### Running Tests
 
-Currently, the app uses mock data for demonstrations. To connect to your actual YOLOv12 backend:
-
-### Step 1: Update the Detection Service
-
-Open `src/services/detectionService.js` and replace the mock function with your API endpoint:
-
-```javascript
-export const detectPotholes = async (imageFile) => {
-  const formData = new FormData();
-  formData.append('image', imageFile);
-  
-  const response = await fetch('YOUR_BACKEND_URL/detect', {
-    method: 'POST',
-    body: formData,
-    // Add headers if needed (e.g., authentication)
-    headers: {
-      // 'Authorization': 'Bearer YOUR_TOKEN'
-    }
-  });
-  
-  if (!response.ok) {
-    throw new Error('Detection failed');
-  }
-  
-  return await response.json();
-};
+```bash
+npm test
 ```
 
-### Expected API Response Format
+## Getting Started
 
-Your backend should return JSON in this format:
+1. **Home Page** - Start at the home page to understand the application
+2. **Detection** - Navigate to the detection page and upload a pothole image
+3. **View Results** - Analyze detected potholes with cost and severity information
+4. **Dashboard** - Access the municipality dashboard for regional management
 
-```json
-{
-  "success": true,
-  "detections": [
-    {
-      "id": 1,
-      "x": 120,
-      "y": 180,
-      "width": 150,
-      "height": 100,
-      "confidence": 0.94,
-      "class": "pothole"
-    }
-  ],
-  "metadata": {
-    "imageWidth": 1200,
-    "imageHeight": 800,
-    "processingTime": 2.3,
-    "modelVersion": "YOLOv12"
-  }
-}
-```
+## Key Components
 
-### Step 2: Handle CORS (if needed)
+### Detection Service
 
-If your backend is on a different domain, you may need to:
+Handles communication with the YOLOv12 backend for image processing and pothole detection.
 
-1. Configure CORS headers on your backend
-2. Or use a proxy in `package.json`:
+### Health Index Calculator
 
-```json
-{
-  "proxy": "http://your-backend-url:port"
-}
-```
+Evaluates overall road condition based on detected issues and provides a health score (0-100).
 
-### Step 3: Add Environment Variables (optional)
+### Cost Estimator
 
-Create a `.env` file in the root:
+Calculates repair costs based on pothole size, depth, and location factors.
 
-```env
-REACT_APP_API_URL=http://your-backend-url:port
-```
+### Prioritization Engine
 
-Then use it in the code:
+Ranks detected potholes by severity, urgency, and maintenance cost-effectiveness.
 
-```javascript
-const API_URL = process.env.REACT_APP_API_URL;
-```
+## Documentation
 
-## Customization
+For more detailed information, refer to:
 
-### Colors and Branding
+- [Quick Start Guide](QUICK_START.md) - Get up and running quickly
+- [Integration Guide](INTEGRATION_GUIDE.md) - Backend integration details
+- [Upgrade Guide](UPGRADE_GUIDE.md) - Version upgrade instructions
+- [Project Summary](PROJECT_SUMMARY.md) - Complete project overview
 
-Edit `tailwind.config.js` to customize colors:
+## Technology Stack
 
-```javascript
-theme: {
-  extend: {
-    colors: {
-      primary: {
-        // Your custom colors
-      }
-    }
-  }
-}
-```
+- **Frontend Framework** - React
+- **Styling** - Tailwind CSS
+- **CSS Processing** - PostCSS
+- **State Management** - React Context API
+- **Build Tool** - Create React App
 
-### Mock Data
+## Backend
 
-To test with different detection scenarios, edit `src/services/detectionService.js`:
+This frontend requires the AI-Pothole-Detection-using-YOLOv12 backend service. Refer to the backend documentation for setup instructions.
 
-```javascript
-export const mockDetections = [
-  {
-    id: 1,
-    x: 120,      // X position
-    y: 180,      // Y position
-    width: 150,  // Box width
-    height: 100, // Box height
-    confidence: 0.94,
-    class: 'pothole'
-  },
-  // Add more mock detections...
-];
-```
+## Development
 
-## Features Breakdown
+### Available Scripts
 
-### Image Upload
-- Drag-and-drop interface
-- File type validation (JPEG, PNG, WebP)
-- File size limit (10MB)
-- Preview before detection
+- `npm start` - Run development server
+- `npm run build` - Create production build
+- `npm test` - Run test suite
+- `npm run eject` - Expose webpack configuration (irreversible)
 
-### Detection Display
-- Canvas-based bounding box rendering
-- Color-coded confidence levels:
-  - Green: ≥85% (High confidence)
-  - Orange: 70-85% (Medium confidence)
-  - Red: <70% (Low confidence)
+### Code Style
 
-### Results Analysis
-- Total detections count
-- Average confidence score
-- Processing time
-- Severity classification (Low/Medium/High)
-- Individual detection breakdown
+The project follows React best practices and uses functional components with hooks.
 
-## Browser Support
+## Troubleshooting
 
-- Chrome (recommended)
-- Firefox
-- Safari
-- Edge
-
-## Performance Tips
-
-1. **Image Optimization**: Compress large images before upload for faster processing
-2. **Production Build**: Always use `npm run build` for deployment
-3. **Caching**: Implement browser caching for static assets
-
-## Deployment
-
-### Deploy to Netlify
-
-1. Build the app: `npm run build`
-2. Drag the `build` folder to Netlify
-3. Or connect your GitHub repo for auto-deployment
-
-### Deploy to Vercel
-
-1. Install Vercel CLI: `npm i -g vercel`
-2. Run: `vercel`
-3. Follow the prompts
-
-### Deploy to GitHub Pages
-
-1. Install: `npm install --save-dev gh-pages`
-2. Add to `package.json`:
-   ```json
-   "homepage": "https://yourusername.github.io/repo-name",
-   "scripts": {
-     "predeploy": "npm run build",
-     "deploy": "gh-pages -d build"
-   }
-   ```
-3. Deploy: `npm run deploy`
-
-## Contributing
-
-This is an academic/research project. Feel free to fork and modify for your needs.
+- **Port 3000 already in use** - Change the PORT environment variable or stop the conflicting process
+- **API Connection Issues** - Verify the backend service is running and `REACT_APP_API_URL` is correctly configured
+- **Dependencies Installation Fails** - Try clearing npm cache: `npm cache clean --force`
 
 ## License
 
-MIT License - feel free to use this project for academic or commercial purposes.
+This project is part of the AI-Pothole-Detection system. See LICENSE file for details.
 
 ## Support
 
-For issues or questions:
-- Check the [GitHub repository](https://github.com/shkmannan/AI-Pothole-Detection-using-YOLOv2)
-- Review the code comments in `src/services/detectionService.js` for API integration help
-
-## Future Enhancements
-
-Potential improvements:
-- Batch image processing
-- Export detection results as PDF/CSV
-- Historical detection tracking
-- Map integration for location-based analysis
-- Real-time video detection
-- User authentication and saved results
+For issues, questions, or contributions, please refer to the project documentation or contact the development team.
 
 ---
 
-**Built with ❤️ for smart city infrastructure analysis**
+**Last Updated:** March 2026
