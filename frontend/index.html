@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RoadSight | Pothole Detection</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand__mark"></span>
+          <div>
+            <p class="brand__name">RoadSight</p>
+            <p class="brand__tag">AI pothole detection console</p>
+          </div>
+        </div>
+        <nav class="topbar__nav">
+          <a href="#workflow">Workflow</a>
+          <a href="#live">Live Camera</a>
+          <a href="#results">Results</a>
+        </nav>
+        <button class="btn btn--ghost" id="healthButton">Check API</button>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="hero__copy">
+            <p class="pill">YOLOv12-Ready</p>
+            <h1>Detect potholes in real time across images, video, and live streams.</h1>
+            <p class="sub">
+              A focused control panel for your detection pipeline. Upload footage, track confidence
+              thresholds, and export actionable findings.
+            </p>
+            <div class="hero__actions">
+              <button class="btn" id="runDemo">Run Demo</button>
+              <button class="btn btn--ghost" id="downloadReport">Download Sample Report</button>
+            </div>
+          </div>
+          <div class="hero__panel">
+            <div class="stat">
+              <p class="stat__label">Model</p>
+              <p class="stat__value">YOLOv12 · pothole-v1</p>
+            </div>
+            <div class="stat">
+              <p class="stat__label">Confidence</p>
+              <div class="stat__row">
+                <input id="confidence" type="range" min="0" max="1" step="0.01" value="0.4" />
+                <span id="confidenceValue">0.40</span>
+              </div>
+            </div>
+            <div class="stat">
+              <p class="stat__label">Detected Today</p>
+              <p class="stat__value" id="detectedCount">128</p>
+              <p class="stat__note">Across 6 road segments</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="workflow" class="workflow">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Workflow</p>
+              <h2>Upload, detect, and review results.</h2>
+            </div>
+            <p class="section-sub">
+              Choose an input type. Each run creates a report and overlays detections.
+            </p>
+          </div>
+
+          <div class="grid">
+            <article class="card">
+              <h3>Image detection</h3>
+              <p>Single frame detection with bounding boxes and confidence labels.</p>
+              <input type="file" id="imageInput" accept="image/*" />
+              <button class="btn btn--small" id="imageDetect">Detect potholes</button>
+              <div class="preview" id="imagePreview">Drop an image to preview.</div>
+            </article>
+            <article class="card">
+              <h3>Video detection</h3>
+              <p>Batch analysis for road surveys with exportable highlights.</p>
+              <input type="file" id="videoInput" accept="video/*" />
+              <button class="btn btn--small" id="videoDetect">Analyze video</button>
+              <div class="preview" id="videoPreview">Upload a video to preview.</div>
+            </article>
+            <article class="card" id="live">
+              <h3>Live camera</h3>
+              <p>Stream detections directly from a connected camera.</p>
+              <div class="button-row">
+                <button class="btn btn--small" id="cameraStart">Start stream</button>
+                <button class="btn btn--ghost btn--small" id="cameraStop">Stop</button>
+              </div>
+              <div class="preview preview--dark" id="cameraPreview">Camera idle</div>
+            </article>
+          </div>
+        </section>
+
+        <section id="results" class="results">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Results</p>
+              <h2>Latest detection run</h2>
+            </div>
+            <div class="badge">Pending new run</div>
+          </div>
+          <div class="results__panel">
+            <div>
+              <h3>Highlights</h3>
+              <ul class="list" id="resultList">
+                <li>No detections yet. Run a scan to populate the report.</li>
+              </ul>
+            </div>
+            <div>
+              <h3>System log</h3>
+              <div class="log" id="logPanel">
+                <p>[ready] Dashboard loaded.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <p>RoadSight · AI Pothole Detection Console</p>
+        <p>Designed for field teams and city engineers.</p>
+      </footer>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
