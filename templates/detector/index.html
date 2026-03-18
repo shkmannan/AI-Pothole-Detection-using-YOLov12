@@ -1,0 +1,175 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content="{{ csrf_token }}" />
+    <title>RoadSight | Phone Camera Pothole Detection</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{% static 'detector/styles.css' %}" />
+  </head>
+  <body>
+    <div class="bg-orb bg-orb--one"></div>
+    <div class="bg-orb bg-orb--two"></div>
+    <div class="page">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand__mark"></span>
+          <div>
+            <p class="brand__name">RoadSight</p>
+            <p class="brand__tag">Django pothole detection console</p>
+          </div>
+        </div>
+        <nav class="topbar__nav">
+          <a href="#workflow">Uploads</a>
+          <a href="#camera">Phone Camera</a>
+          <a href="#results">Results</a>
+        </nav>
+        <div class="topbar__actions">
+          <span class="chip chip--status" id="apiStatus">API: Unknown</span>
+          <button class="btn btn--ghost" id="healthButton" type="button">Check API</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="hero__copy">
+            <p class="pill">Browser Camera</p>
+            <h1>Open this app on any phone and use that phone's rear camera.</h1>
+            <p class="sub">
+              The camera now runs in the browser with secure `getUserMedia`, while Django handles
+              YOLO inference on uploaded images, videos, and live camera frames.
+            </p>
+            <div class="hero__actions">
+              <button class="btn" id="runDemo" type="button">Load Demo Summary</button>
+              <button class="btn btn--ghost" id="downloadReport" type="button">
+                Download Sample Report
+              </button>
+            </div>
+          </div>
+          <div class="hero__panel">
+            <div class="stat">
+              <p class="stat__label">Server</p>
+              <p class="stat__value">Django + YOLO</p>
+            </div>
+            <div class="stat">
+              <p class="stat__label">Confidence</p>
+              <div class="stat__row">
+                <input id="confidence" type="range" min="0" max="1" step="0.01" value="0.4" />
+                <span id="confidenceValue">0.40</span>
+              </div>
+            </div>
+            <div class="stat">
+              <p class="stat__label">Model Path</p>
+              <p class="stat__code">{{ model_path }}</p>
+            </div>
+            <div class="stat">
+              <p class="stat__label">Video Sampling</p>
+              <p class="stat__note">Every {{ video_stride }} frame(s)</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="workflow" class="workflow">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Uploads</p>
+              <h2>Run detection on still images and survey videos.</h2>
+            </div>
+            <p class="section-sub">
+              The same backend powers upload analysis and live phone-camera detection.
+            </p>
+          </div>
+
+          <div class="grid">
+            <article class="card">
+              <h3>Image detection</h3>
+              <p>Upload a photo and receive an annotated frame from the Django API.</p>
+              <input type="file" id="imageInput" accept="image/*" />
+              <button class="btn btn--small" id="imageDetect" type="button">
+                Detect potholes
+              </button>
+              <div class="preview" id="imagePreview">Drop an image to preview.</div>
+            </article>
+            <article class="card">
+              <h3>Video detection</h3>
+              <p>Upload a road survey clip. The backend samples frames and returns a summary.</p>
+              <input type="file" id="videoInput" accept="video/*" />
+              <button class="btn btn--small" id="videoDetect" type="button">
+                Analyze video
+              </button>
+              <div class="preview" id="videoPreview">Upload a video to preview.</div>
+            </article>
+            <article class="card" id="camera">
+              <h3>Phone camera</h3>
+              <p>
+                Start the camera from the device that opens this page. Use HTTPS on Render or
+                localhost during development.
+              </p>
+              <div class="button-row">
+                <button class="btn btn--small" id="cameraStart" type="button">
+                  Start camera
+                </button>
+                <button class="btn btn--ghost btn--small" id="cameraStop" type="button">
+                  Stop camera
+                </button>
+              </div>
+              <div class="button-row">
+                <button class="btn btn--small" id="liveDetectStart" type="button">
+                  Start live detection
+                </button>
+                <button class="btn btn--ghost btn--small" id="liveDetectStop" type="button">
+                  Stop live detection
+                </button>
+              </div>
+              <div class="preview preview--dark camera-preview">
+                <video id="cameraFeed" playsinline muted autoplay></video>
+                <img id="cameraOverlay" alt="Annotated pothole detection" />
+                <p id="cameraPlaceholder">Camera idle</p>
+              </div>
+              <canvas id="captureCanvas" hidden></canvas>
+            </article>
+          </div>
+        </section>
+
+        <section id="results" class="results">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Results</p>
+              <h2>Latest detection run</h2>
+            </div>
+            <div class="badge" id="resultsBadge">Pending new run</div>
+          </div>
+          <div class="results__panel">
+            <div>
+              <h3>Highlights</h3>
+              <ul class="list" id="resultList">
+                <li>No detections yet. Run a scan to populate the report.</li>
+              </ul>
+              <div class="preview preview--light" id="resultPreview">Annotated output appears here.</div>
+            </div>
+            <div>
+              <h3>System log</h3>
+              <div class="log" id="logPanel">
+                <p>[ready] Django dashboard loaded.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <p>RoadSight . Django deployment for Render</p>
+        <p>Open the site on a phone to use that device's camera.</p>
+      </footer>
+    </div>
+
+    <script src="{% static 'detector/app.js' %}"></script>
+  </body>
+</html>
