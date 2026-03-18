@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color-scheme: light;
   --bg: #081326;
   --bg-soft: #112241;
@@ -9,7 +9,6 @@
   --stroke: rgba(20, 44, 87, 0.18);
   --primary: #ef5b3f;
   --primary-strong: #da3e22;
-  --secondary: #1c83ff;
   --shadow: 0 24px 44px rgba(3, 9, 22, 0.22);
   --mono: "IBM Plex Mono", "Courier New", monospace;
   --sans: "Sora", "Segoe UI", sans-serif;
@@ -146,7 +145,7 @@ body {
 .hero__panel,
 .card,
 .results__panel {
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.5);
   box-shadow: var(--shadow);
 }
@@ -211,9 +210,11 @@ body {
   gap: 12px;
 }
 
-.stat__note {
+.stat__note,
+.stat__code {
   color: var(--muted);
   font-size: 0.8rem;
+  word-break: break-word;
 }
 
 input[type="range"] {
@@ -258,7 +259,7 @@ input[type="range"] {
   padding: 20px;
   display: grid;
   gap: 14px;
-  min-height: 320px;
+  min-height: 360px;
 }
 
 .card h3 {
@@ -291,45 +292,38 @@ input[type="range"] {
   border: 1px solid rgba(95, 154, 255, 0.3);
 }
 
-#cameraStream {
+.preview img,
+.preview video {
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: 10px;
+  display: block;
+}
+
+.camera-preview {
+  min-height: 240px;
+}
+
+#cameraFeed,
+#cameraOverlay {
   width: 100%;
   height: 100%;
-  min-height: 180px;
+  min-height: 220px;
   object-fit: cover;
   border-radius: 8px;
   display: none;
 }
 
+#cameraOverlay {
+  position: absolute;
+  inset: 0;
+}
+
 #cameraPlaceholder {
   padding: 20px;
-}
-
-.preview img,
-.preview video {
-  max-width: 100%;
-  max-height: 220px;
-  border-radius: 10px;
-  display: block;
-}
-
-.field {
   display: grid;
-  gap: 6px;
-}
-
-.field span {
-  font-size: 0.8rem;
-  color: var(--muted);
-  font-family: var(--mono);
-}
-
-.field input {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--stroke);
-  font-family: var(--mono);
-  color: var(--ink);
+  place-items: center;
+  z-index: 1;
 }
 
 .results__panel {
@@ -345,6 +339,7 @@ input[type="range"] {
   display: grid;
   gap: 10px;
   color: var(--muted);
+  margin-bottom: 18px;
 }
 
 .badge {
