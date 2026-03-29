@@ -1,8 +1,11 @@
+import json
+
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_POST
 
+from .models import PotholeReport
 from .services import analyze_uploaded_video, get_model_status, infer_uploaded_image
 
 
@@ -103,3 +106,67 @@ def detect_frame(request: HttpRequest):
         return JsonResponse({"detail": f"Frame detection failed: {error}"}, status=500)
 
     return JsonResponse(result)
+
+
+@require_GET
+def list_reports(request: HttpRequest):
+    reports = list(
+        PotholeReport.objects.values(
+            "id",
+            "source",
+            "latitude",
+            "longitude",
+            "detections_count",
+            "avg_confidence",
+            "accuracy_m",
+            "created_at",
+        )[:200]
+    )
+    return JsonResponse({"reports": reports})
+
+
+@require_POST
+def create_report(request: HttpRequest):
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload."}, status=400)
+
+    try:
+        latitude = float(payload.get("latitude"))
+        longitude = float(payload.get("longitude"))
+        detections_count = int(payload.get("detections_count", 0))
+        avg_confidence = float(payload.get("avg_confidence", 0.0))
+        accuracy_m = payload.get("accuracy_m")
+        accuracy_m = None if accuracy_m in (None, "") else float(accuracy_m)
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "Latitude, longitude, and detection values are invalid."}, status=400)
+
+    source = str(payload.get("source", "unknown")).strip() or "unknown"
+
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return JsonResponse({"detail": "Latitude or longitude is out of range."}, status=400)
+    if detections_count <= 0:
+        return JsonResponse({"detail": "Only positive pothole detections can be reported."}, status=400)
+
+    report = PotholeReport.objects.create(
+        source=source[:32],
+        latitude=latitude,
+        longitude=longitude,
+        detections_count=detections_count,
+        avg_confidence=max(0.0, min(1.0, avg_confidence)),
+        accuracy_m=accuracy_m,
+    )
+    return JsonResponse(
+        {
+            "id": report.id,
+            "source": report.source,
+            "latitude": float(report.latitude),
+            "longitude": float(report.longitude),
+            "detections_count": report.detections_count,
+            "avg_confidence": report.avg_confidence,
+            "accuracy_m": report.accuracy_m,
+            "created_at": report.created_at.isoformat(),
+        },
+        status=201,
+    )

@@ -9,4 +9,6 @@ urlpatterns = [
     path("api/detect/image/", views.detect_image, name="detect_image"),
     path("api/detect/video/", views.detect_video, name="detect_video"),
     path("api/detect/frame/", views.detect_frame, name="detect_frame"),
+    path("api/reports/", views.list_reports, name="list_reports"),
+    path("api/reports/create/", views.create_report, name="create_report"),
 ]
