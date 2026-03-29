@@ -3,7 +3,7 @@ from django.http import HttpRequest, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_POST
 
-from .services import analyze_uploaded_video, infer_uploaded_image
+from .services import analyze_uploaded_video, get_model_status, infer_uploaded_image
 
 
 def _parse_confidence(request: HttpRequest) -> float:
@@ -29,12 +29,19 @@ def index(request: HttpRequest):
 
 @require_GET
 def health(request: HttpRequest):
+    model_status = get_model_status()
     return JsonResponse(
         {
-            "status": "ok",
+            "status": "ok" if model_status["ready"] else "degraded",
             "app": "django",
             "model_path": settings.YOLO_MODEL_PATH,
-        }
+            "resolved_model_path": model_status["resolved_path"],
+            "model_ready": model_status["ready"],
+            "model_labels": model_status["labels"],
+            "target_labels": model_status["target_labels"],
+            "detail": model_status["detail"],
+        },
+        status=200 if model_status["ready"] else 503,
     )
 
 
@@ -47,6 +54,8 @@ def detect_image(request: HttpRequest):
     try:
         result = infer_uploaded_image(uploaded_image, _parse_confidence(request))
     except FileNotFoundError as error:
+        return JsonResponse({"detail": str(error)}, status=500)
+    except RuntimeError as error:
         return JsonResponse({"detail": str(error)}, status=500)
     except ValueError as error:
         return JsonResponse({"detail": str(error)}, status=400)
@@ -66,6 +75,8 @@ def detect_video(request: HttpRequest):
         result = analyze_uploaded_video(uploaded_video, _parse_confidence(request))
     except FileNotFoundError as error:
         return JsonResponse({"detail": str(error)}, status=500)
+    except RuntimeError as error:
+        return JsonResponse({"detail": str(error)}, status=500)
     except ValueError as error:
         return JsonResponse({"detail": str(error)}, status=400)
     except Exception as error:
@@ -83,6 +94,8 @@ def detect_frame(request: HttpRequest):
     try:
         result = infer_uploaded_image(uploaded_frame, _parse_confidence(request))
     except FileNotFoundError as error:
+        return JsonResponse({"detail": str(error)}, status=500)
+    except RuntimeError as error:
         return JsonResponse({"detail": str(error)}, status=500)
     except ValueError as error:
         return JsonResponse({"detail": str(error)}, status=400)

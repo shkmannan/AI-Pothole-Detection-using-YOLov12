@@ -87,4 +87,14 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
 YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH", str(BASE_DIR / "yolov8n.pt"))
+YOLO_MODEL_PATH_EXPLICIT = "YOLO_MODEL_PATH" in os.environ
+YOLO_FALLBACK_MODEL_PATHS = (
+    str(BASE_DIR / "runs" / "detect" / "pothole_model" / "weights" / "best.pt"),
+    str(BASE_DIR / "runs" / "detect" / "train" / "weights" / "best.pt"),
+)
+YOLO_TARGET_LABELS = tuple(
+    label.strip().lower()
+    for label in os.getenv("YOLO_TARGET_LABELS", "pothole,potholes").split(",")
+    if label.strip()
+)
 VIDEO_FRAME_STRIDE = int(os.getenv("VIDEO_FRAME_STRIDE", "5"))

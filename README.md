@@ -21,13 +21,18 @@ pip install -r requirements.txt
 ```
 
 3. Set environment variables from `.env.example`.
-4. Start Django:
+4. Train or provide pothole-specific weights.
+
+If you train with `train.py`, the expected output is `runs/detect/pothole_model/weights/best.pt`.
+The default `yolov8n.pt` file is a generic COCO model and will not detect potholes correctly.
+
+5. Start Django:
 
 ```bash
 python manage.py runserver
 ```
 
-5. Open `http://127.0.0.1:8000/`.
+6. Open `http://127.0.0.1:8000/`.
 
 To use the phone camera locally, either open the app directly on the phone through a reachable local
 development URL or deploy to Render so the app is served over HTTPS.
@@ -37,6 +42,7 @@ development URL or deploy to Render so the app is served over HTTPS.
 - `render.yaml` defines the web service.
 - `Procfile` starts Gunicorn.
 - Set `YOLO_MODEL_PATH` to your trained model weights if you are not using the default file.
+- `YOLO_TARGET_LABELS` defaults to `pothole,potholes` and is used to filter detections to the pothole class only.
 
 Important: Render cannot access a physical phone camera from the server. The phone camera works
 because the browser on the phone captures frames and uploads them to Django over HTTPS.
