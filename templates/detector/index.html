@@ -12,6 +12,12 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
     <link rel="stylesheet" href="{% static 'detector/styles.css' %}" />
   </head>
   <body>
@@ -29,6 +35,7 @@
         <nav class="topbar__nav">
           <a href="#workflow">Uploads</a>
           <a href="#camera">Phone Camera</a>
+          <a href="#map">Municipality Map</a>
           <a href="#results">Results</a>
         </nav>
         <div class="topbar__actions">
@@ -138,6 +145,64 @@
           </div>
         </section>
 
+        <section id="map" class="municipality">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Municipality Map</p>
+              <h2>Pin detected potholes to a shared inspection map.</h2>
+            </div>
+            <p class="section-sub">
+              Use browser location permission to attach latitude and longitude when a detection is
+              reported from the field.
+            </p>
+          </div>
+          <div class="map-layout">
+            <article class="map-panel map-panel--map">
+              <div class="map-toolbar">
+                <div>
+                  <p class="map-toolbar__label">Location status</p>
+                  <p class="map-toolbar__value" id="locationStatus">
+                    Location not enabled yet.
+                  </p>
+                </div>
+                <div class="button-row">
+                  <button class="btn btn--small" id="enableLocation" type="button">
+                    Enable location
+                  </button>
+                  <button class="btn btn--ghost btn--small" id="refreshReports" type="button">
+                    Refresh reports
+                  </button>
+                </div>
+              </div>
+              <div id="mapCanvas" class="map-canvas" aria-label="Municipality pothole map"></div>
+            </article>
+
+            <article class="map-panel map-panel--meta">
+              <h3>Reporting controls</h3>
+              <p class="map-note">
+                When enabled, each confirmed pothole detection can be stored with the current
+                device coordinates for municipality review.
+              </p>
+              <label class="switch">
+                <input id="autoReportToggle" type="checkbox" checked />
+                <span>Auto-save detections when potholes are found</span>
+              </label>
+              <button class="btn btn--small" id="reportLatest" type="button">
+                Report latest detection now
+              </button>
+              <div class="map-meta">
+                <p id="reportStatus">No report has been submitted yet.</p>
+              </div>
+              <div>
+                <p class="map-toolbar__label">Recent municipality reports</p>
+                <div class="report-feed" id="reportFeed">
+                  <p class="report-feed__empty">No reports loaded yet.</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <section id="results" class="results">
           <div class="section-header">
             <div>
@@ -170,6 +235,11 @@
       </footer>
     </div>
 
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
     <script src="{% static 'detector/app.js' %}"></script>
   </body>
 </html>
