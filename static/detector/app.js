@@ -14,6 +14,9 @@ const state = {
   liveDetection: false,
   frameDelayMs: 900,
   isSendingFrame: false,
+  cameraDetections: [],
+  cameraImageWidth: 0,
+  cameraImageHeight: 0,
   map: null,
   reportsLayer: null,
   userMarker: null,
@@ -110,6 +113,92 @@ const setResults = (items) => {
   });
 };
 
+const resizeCanvas = (canvas, width, height) => {
+  const safeWidth = Math.max(1, Math.round(width));
+  const safeHeight = Math.max(1, Math.round(height));
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(safeWidth * dpr);
+  canvas.height = Math.round(safeHeight * dpr);
+  canvas.style.width = `${safeWidth}px`;
+  canvas.style.height = `${safeHeight}px`;
+  const context = canvas.getContext("2d");
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, safeWidth, safeHeight);
+  return context;
+};
+
+const getContainRect = (sourceWidth, sourceHeight, targetWidth, targetHeight) => {
+  if (!sourceWidth || !sourceHeight || !targetWidth || !targetHeight) {
+    return { x: 0, y: 0, width: targetWidth, height: targetHeight };
+  }
+
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    x: (targetWidth - width) / 2,
+    y: (targetHeight - height) / 2,
+    width,
+    height,
+  };
+};
+
+const drawDetectionBoxes = (
+  canvas,
+  detections = [],
+  sourceWidth,
+  sourceHeight,
+  { fit = "fill" } = {},
+) => {
+  const targetWidth = canvas.clientWidth || canvas.offsetWidth;
+  const targetHeight = canvas.clientHeight || canvas.offsetHeight;
+  const context = resizeCanvas(canvas, targetWidth || 1, targetHeight || 1);
+
+  if (!detections.length || !sourceWidth || !sourceHeight || !targetWidth || !targetHeight) {
+    return;
+  }
+
+  const drawRect =
+    fit === "contain"
+      ? getContainRect(sourceWidth, sourceHeight, targetWidth, targetHeight)
+      : { x: 0, y: 0, width: targetWidth, height: targetHeight };
+  const scaleX = drawRect.width / sourceWidth;
+  const scaleY = drawRect.height / sourceHeight;
+  const fontSize = Math.max(12, Math.min(18, drawRect.width * 0.03));
+
+  context.lineWidth = 2;
+  context.font = `600 ${fontSize}px Sora, sans-serif`;
+  context.textBaseline = "top";
+
+  detections.forEach((detection) => {
+    const box = detection.box ?? {};
+    const x = drawRect.x + Number(box.x1 ?? 0) * scaleX;
+    const y = drawRect.y + Number(box.y1 ?? 0) * scaleY;
+    const width = Math.max(0, (Number(box.x2 ?? 0) - Number(box.x1 ?? 0)) * scaleX);
+    const height = Math.max(0, (Number(box.y2 ?? 0) - Number(box.y1 ?? 0)) * scaleY);
+    const label = `${detection.label ?? "pothole"} ${Number(detection.confidence ?? 0).toFixed(2)}`;
+
+    context.strokeStyle = "#12d18e";
+    context.fillStyle = "rgba(18, 209, 142, 0.16)";
+    context.strokeRect(x, y, width, height);
+    context.fillRect(x, y, width, height);
+
+    const textWidth = context.measureText(label).width;
+    const textX = Math.max(0, Math.min(targetWidth - textWidth - 12, x));
+    const textY = Math.max(0, y - fontSize - 10);
+    context.fillStyle = "#12d18e";
+    context.fillRect(textX, textY, textWidth + 12, fontSize + 8);
+    context.fillStyle = "#041126";
+    context.fillText(label, textX + 6, textY + 4);
+  });
+};
+
+const clearDetectionCanvas = (canvas) => {
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.style.display = "none";
+};
+
 const setPreviewContent = (container, source, tagName) => {
   if (!source) {
     container.textContent = "No preview available.";
@@ -139,6 +228,52 @@ const updateFilePreview = (container, file) => {
     return;
   }
   container.textContent = file.name;
+};
+
+const renderPreviewWithDetections = (
+  container,
+  source,
+  detections = [],
+  sourceWidth,
+  sourceHeight,
+) => {
+  if (!source) {
+    container.textContent = "No preview available.";
+    return;
+  }
+
+  container.innerHTML = "";
+  const stage = document.createElement("div");
+  stage.className = "preview-stage";
+
+  const image = document.createElement("img");
+  image.className = "preview-stage__media";
+  image.alt = "Detection preview";
+  image.src = source;
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "preview-stage__canvas";
+
+  const draw = () => {
+    const width = image.clientWidth || image.naturalWidth;
+    const height = image.clientHeight || image.naturalHeight;
+    if (!width || !height) {
+      return;
+    }
+    drawDetectionBoxes(
+      canvas,
+      detections,
+      Number(sourceWidth) || image.naturalWidth,
+      Number(sourceHeight) || image.naturalHeight,
+    );
+  };
+
+  image.addEventListener("load", draw);
+  stage.append(image, canvas);
+  container.appendChild(stage);
+  if (image.complete) {
+    window.requestAnimationFrame(draw);
+  }
 };
 
 const apiRequest = async (url, options = {}) => {
@@ -171,6 +306,33 @@ const renderAnnotatedImage = (dataUrl) => {
     return;
   }
   setPreviewContent(resultPreview, dataUrl, "img");
+};
+
+const renderCameraDetections = (detections = [], sourceWidth = 0, sourceHeight = 0) => {
+  state.cameraDetections = detections;
+  state.cameraImageWidth = Number(sourceWidth) || cameraFeed.videoWidth || 0;
+  state.cameraImageHeight = Number(sourceHeight) || cameraFeed.videoHeight || 0;
+
+  if (!state.cameraDetections.length) {
+    clearDetectionCanvas(cameraOverlay);
+    return;
+  }
+
+  cameraOverlay.style.display = "block";
+  drawDetectionBoxes(
+    cameraOverlay,
+    state.cameraDetections,
+    state.cameraImageWidth,
+    state.cameraImageHeight,
+    { fit: "contain" },
+  );
+};
+
+const resetCameraDetections = () => {
+  state.cameraDetections = [];
+  state.cameraImageWidth = 0;
+  state.cameraImageHeight = 0;
+  clearDetectionCanvas(cameraOverlay);
 };
 
 const formatTimestamp = (value) => {
@@ -459,6 +621,12 @@ const stopLiveDetection = () => {
   state.liveDetection = false;
   state.isSendingFrame = false;
   resultsBadge.textContent = "Live detection stopped";
+  resetCameraDetections();
+  showCameraState({
+    streamActive: Boolean(state.stream),
+    annotated: false,
+    message: state.stream ? "Camera ready" : "Camera idle",
+  });
 };
 
 const runLiveDetection = async () => {
@@ -478,13 +646,17 @@ const runLiveDetection = async () => {
       body: form,
     });
 
-    cameraOverlay.src = data.annotated_image;
-    showCameraState({ streamActive: true, annotated: true });
+    renderCameraDetections(data.detections ?? [], data.image_width, data.image_height);
+    showCameraState({
+      streamActive: true,
+      annotated: Boolean((data.detections ?? []).length),
+    });
     renderAnnotatedImage(data.annotated_image);
     resultsBadge.textContent = "Live detection running";
     setResults([
       `Live detections: ${data.count ?? 0}`,
       `Average confidence: ${(data.avg_confidence ?? 0).toFixed(2)}`,
+      `Bounding boxes drawn: ${(data.detections ?? []).length}`,
       "Source: browser rear camera",
     ]);
     await recordDetection(
@@ -504,7 +676,7 @@ const runLiveDetection = async () => {
 
 const startPhoneCamera = async () => {
   if (state.stream) {
-    showCameraState({ streamActive: true, annotated: Boolean(cameraOverlay.src) });
+    showCameraState({ streamActive: true, annotated: Boolean(state.cameraDetections.length) });
     return;
   }
 
@@ -520,6 +692,7 @@ const startPhoneCamera = async () => {
   state.stream = await navigator.mediaDevices.getUserMedia(constraints);
   cameraFeed.srcObject = state.stream;
   await cameraFeed.play();
+  resetCameraDetections();
   showCameraState({ streamActive: true, annotated: false });
 };
 
@@ -530,7 +703,7 @@ const stopPhoneCamera = () => {
   }
   state.stream = null;
   cameraFeed.srcObject = null;
-  cameraOverlay.removeAttribute("src");
+  resetCameraDetections();
   showCameraState({ streamActive: false, annotated: false, message: "Camera idle" });
 };
 
@@ -563,12 +736,20 @@ imageDetect.addEventListener("click", async () => {
       method: "POST",
       body: form,
     });
-    renderAnnotatedImage(data.annotated_image);
+    const previewSource = imagePreview.querySelector("img")?.src ?? data.annotated_image;
+    renderPreviewWithDetections(
+      resultPreview,
+      previewSource,
+      data.detections ?? [],
+      data.image_width,
+      data.image_height,
+    );
     resultsBadge.textContent = "Image analyzed";
     setResults([
       `Filename: ${data.filename ?? file.name}`,
       `Detected potholes: ${data.count ?? 0}`,
       `Average confidence: ${(data.avg_confidence ?? 0).toFixed(2)}`,
+      `Bounding boxes drawn: ${(data.detections ?? []).length}`,
     ]);
     await recordDetection(
       buildDetectionSummary("image-upload", data.count ?? 0, data.avg_confidence ?? 0),
@@ -596,13 +777,20 @@ videoDetect.addEventListener("click", async () => {
       method: "POST",
       body: form,
     });
-    renderAnnotatedImage(data.preview_image);
+    renderPreviewWithDetections(
+      resultPreview,
+      data.preview_base_image ?? data.preview_image,
+      data.preview_detections ?? [],
+      data.preview_width,
+      data.preview_height,
+    );
     resultsBadge.textContent = "Video analyzed";
     setResults([
       `Frames seen: ${data.frames_seen ?? 0}`,
       `Frames processed: ${data.frames_processed ?? 0}`,
       `Total pothole detections: ${data.count ?? 0}`,
       `Peak potholes in one sampled frame: ${data.peak_detections ?? 0}`,
+      `Preview frame boxes: ${(data.preview_detections ?? []).length}`,
       `Sampling stride: every ${data.stride ?? 1} frame(s)`,
     ]);
     await recordDetection(
@@ -684,7 +872,7 @@ enableLocation.addEventListener("click", async () => {
       accuracy: position.coords.accuracy,
     };
     updateLocationStatus(
-      `Location ready at ${state.currentLocation.latitude.toFixed(5)}, ${state.currentLocation.longitude.toFixed(5)} (±${Math.round(state.currentLocation.accuracy ?? 0)} m).`,
+      `Location ready at ${state.currentLocation.latitude.toFixed(5)}, ${state.currentLocation.longitude.toFixed(5)} (+/-${Math.round(state.currentLocation.accuracy ?? 0)} m).`,
     );
     updateUserLocationOnMap();
     log("Device location captured.", "success");
@@ -744,6 +932,12 @@ downloadReport.addEventListener("click", () => {
   link.download = "pothole-report.csv";
   link.click();
   log("Sample report downloaded.", "success");
+});
+
+window.addEventListener("resize", () => {
+  if (state.cameraDetections.length) {
+    renderCameraDetections(state.cameraDetections, state.cameraImageWidth, state.cameraImageHeight);
+  }
 });
 
 ensureMap();

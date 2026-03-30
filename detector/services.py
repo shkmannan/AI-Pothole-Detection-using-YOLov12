@@ -95,11 +95,10 @@ def _get_model() -> YOLO:
     return _model
 
 
-def _draw_detections(frame: np.ndarray, result: Any) -> tuple[np.ndarray, int, float]:
-    annotated = frame.copy()
-    count = 0
-    total_confidence = 0.0
+def _serialize_detections(frame: np.ndarray, result: Any) -> tuple[list[dict[str, Any]], int, float]:
+    detections: list[dict[str, Any]] = []
     label_map = result.names if isinstance(result.names, dict) else _model_names(_get_model())
+    frame_height, frame_width = frame.shape[:2]
 
     if result.boxes is not None:
         for box in result.boxes:
@@ -110,23 +109,47 @@ def _draw_detections(frame: np.ndarray, result: Any) -> tuple[np.ndarray, int, f
             confidence = float(box.conf.item())
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             label = str(label_map.get(class_id, "pothole"))
-
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), (14, 184, 122), 2)
-            cv2.putText(
-                annotated,
-                f"{label} {confidence:.2f}",
-                (x1, max(24, y1 - 10)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (14, 184, 122),
-                2,
+            detections.append(
+                {
+                    "label": label,
+                    "confidence": round(confidence, 4),
+                    "box": {
+                        "x1": max(0, min(frame_width, x1)),
+                        "y1": max(0, min(frame_height, y1)),
+                        "x2": max(0, min(frame_width, x2)),
+                        "y2": max(0, min(frame_height, y2)),
+                    },
+                }
             )
 
-            count += 1
-            total_confidence += confidence
-
+    count = len(detections)
+    total_confidence = sum(float(detection["confidence"]) for detection in detections)
     avg_confidence = round(total_confidence / count, 4) if count else 0.0
-    return annotated, count, avg_confidence
+    return detections, count, avg_confidence
+
+
+def _draw_detections(frame: np.ndarray, detections: list[dict[str, Any]]) -> np.ndarray:
+    annotated = frame.copy()
+    for detection in detections:
+        box = detection["box"]
+        x1 = int(box["x1"])
+        y1 = int(box["y1"])
+        x2 = int(box["x2"])
+        y2 = int(box["y2"])
+        label = str(detection["label"])
+        confidence = float(detection["confidence"])
+
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), (14, 184, 122), 2)
+        cv2.putText(
+            annotated,
+            f"{label} {confidence:.2f}",
+            (x1, max(24, y1 - 10)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (14, 184, 122),
+            2,
+        )
+    return annotated
 
 
 def _encode_image(frame: np.ndarray) -> str:
@@ -141,7 +164,8 @@ def _run_inference(frame: np.ndarray, confidence: float) -> dict[str, Any]:
     with _inference_lock:
         result = _get_model()(frame, conf=confidence, verbose=False)[0]
 
-    annotated, count, avg_confidence = _draw_detections(frame, result)
+    detections, count, avg_confidence = _serialize_detections(frame, result)
+    annotated = _draw_detections(frame, detections)
     cv2.putText(
         annotated,
         f"Potholes: {count}",
@@ -155,6 +179,9 @@ def _run_inference(frame: np.ndarray, confidence: float) -> dict[str, Any]:
         "count": count,
         "avg_confidence": avg_confidence,
         "annotated_image": _encode_image(annotated),
+        "detections": detections,
+        "image_width": int(frame.shape[1]),
+        "image_height": int(frame.shape[0]),
     }
 
 
@@ -206,6 +233,12 @@ def analyze_uploaded_video(file_obj: Any, confidence: float) -> dict[str, Any]:
     total_detections = 0
     peak_detections = 0
     preview_image = None
+    preview_base_image = None
+    preview_detections: list[dict[str, Any]] = []
+    preview_width = 0
+    preview_height = 0
+    preview_count = -1
+    preview_avg_confidence = -1.0
     stride = max(1, settings.VIDEO_FRAME_STRIDE)
 
     try:
@@ -222,8 +255,21 @@ def analyze_uploaded_video(file_obj: Any, confidence: float) -> dict[str, Any]:
             result = _run_inference(frame, confidence)
             total_detections += result["count"]
             peak_detections = max(peak_detections, result["count"])
-            if preview_image is None:
+            if (
+                preview_image is None
+                or result["count"] > preview_count
+                or (
+                    result["count"] == preview_count
+                    and result["avg_confidence"] > preview_avg_confidence
+                )
+            ):
                 preview_image = result["annotated_image"]
+                preview_base_image = _encode_image(frame)
+                preview_detections = result["detections"]
+                preview_width = result["image_width"]
+                preview_height = result["image_height"]
+                preview_count = result["count"]
+                preview_avg_confidence = result["avg_confidence"]
     finally:
         capture.release()
         temp_path.unlink(missing_ok=True)
@@ -234,5 +280,9 @@ def analyze_uploaded_video(file_obj: Any, confidence: float) -> dict[str, Any]:
         "count": total_detections,
         "peak_detections": peak_detections,
         "preview_image": preview_image,
+        "preview_base_image": preview_base_image,
+        "preview_detections": preview_detections,
+        "preview_width": preview_width,
+        "preview_height": preview_height,
         "stride": stride,
     }
