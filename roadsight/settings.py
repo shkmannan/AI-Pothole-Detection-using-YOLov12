@@ -76,7 +76,11 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if DEBUG
+            else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        ),
     }
 }
 
@@ -98,3 +102,7 @@ YOLO_TARGET_LABELS = tuple(
     if label.strip()
 )
 VIDEO_FRAME_STRIDE = int(os.getenv("VIDEO_FRAME_STRIDE", "5"))
+POTHOLE_CAMERA_FOCAL_LENGTH_PX = float(os.getenv("POTHOLE_CAMERA_FOCAL_LENGTH_PX", "1100"))
+POTHOLE_REFERENCE_WIDTH_M = float(os.getenv("POTHOLE_REFERENCE_WIDTH_M", "0.75"))
+POTHOLE_DISTANCE_MIN_M = float(os.getenv("POTHOLE_DISTANCE_MIN_M", "1.5"))
+POTHOLE_DISTANCE_MAX_M = float(os.getenv("POTHOLE_DISTANCE_MAX_M", "25.0"))

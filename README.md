@@ -9,6 +9,7 @@ that opens the site.
 - Django replaces the previous FastAPI plus static frontend split.
 - Live detection uses `navigator.mediaDevices.getUserMedia()` in the browser.
 - The backend receives uploaded images, videos, and phone-camera frames for YOLO inference.
+- Estimated pothole distance, depth, and severity are calculated for each detection.
 - Render deployment files are included in the repo.
 
 ## Local run
@@ -29,10 +30,14 @@ The default `yolov8n.pt` file is a generic COCO model and will not detect pothol
 5. Start Django:
 
 ```bash
+python manage.py migrate
 python manage.py runserver
 ```
 
 6. Open `http://127.0.0.1:8000/`.
+
+If the dashboard says no pothole model is installed, use the new "Install model" card in the UI
+to upload your local `best.pt` file, or set `YOLO_MODEL_PATH` before starting Django.
 
 To use the phone camera locally, either open the app directly on the phone through a reachable local
 development URL or deploy to Render so the app is served over HTTPS.
@@ -46,3 +51,15 @@ development URL or deploy to Render so the app is served over HTTPS.
 
 Important: Render cannot access a physical phone camera from the server. The phone camera works
 because the browser on the phone captures frames and uploads them to Django over HTTPS.
+
+## Estimated pothole metrics
+
+The app now returns approximate:
+
+- camera-to-pothole distance in meters
+- pothole depth in centimeters
+- severity labels: low, medium, high
+
+These values are heuristic estimates based on bounding-box size, image position, and road-contrast
+sampling around each detected pothole. They are useful for triage and ranking, but they are not a
+replacement for calibrated depth sensors or manual field measurement.

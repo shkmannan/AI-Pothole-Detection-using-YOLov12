@@ -80,6 +80,10 @@
               <p class="stat__label">Video Sampling</p>
               <p class="stat__note">Every {{ video_stride }} frame(s)</p>
             </div>
+            <div class="stat">
+              <p class="stat__label">Estimated Metrics</p>
+              <p class="stat__note">Distance, depth, and severity are heuristic estimates.</p>
+            </div>
           </div>
         </section>
 
@@ -95,6 +99,17 @@
           </div>
 
           <div class="grid">
+            <article class="card">
+              <h3>Install model</h3>
+              <p>Upload your local pothole `best.pt` weights file to enable detection.</p>
+              <input type="file" id="modelInput" accept=".pt" />
+              <button class="btn btn--small" id="modelUpload" type="button">
+                Install local model
+              </button>
+              <div class="preview" id="modelStatusPreview">
+                No local pothole weights installed yet.
+              </div>
+            </article>
             <article class="card">
               <h3>Image detection</h3>
               <p>Upload a photo and receive an annotated frame from the Django API.</p>
@@ -217,6 +232,10 @@
               <ul class="list" id="resultList">
                 <li>No detections yet. Run a scan to populate the report.</li>
               </ul>
+              <p class="result-note">
+                Estimated depth and distance are approximate values derived locally from detection
+                size, position, and road contrast.
+              </p>
               <div class="preview preview--light" id="resultPreview">Annotated output appears here.</div>
             </div>
             <div>

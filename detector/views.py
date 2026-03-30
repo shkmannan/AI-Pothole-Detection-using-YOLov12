@@ -6,7 +6,12 @@ from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import PotholeReport
-from .services import analyze_uploaded_video, get_model_status, infer_uploaded_image
+from .services import (
+    analyze_uploaded_video,
+    get_model_status,
+    infer_uploaded_image,
+    install_uploaded_model,
+)
 
 
 def _parse_confidence(request: HttpRequest) -> float:
@@ -16,6 +21,12 @@ def _parse_confidence(request: HttpRequest) -> float:
     except (TypeError, ValueError):
         confidence = 0.4
     return max(0.0, min(1.0, confidence))
+
+
+def _parse_optional_float(value):
+    if value in (None, ""):
+        return None
+    return float(value)
 
 
 @require_GET
@@ -46,6 +57,24 @@ def health(request: HttpRequest):
         },
         status=200 if model_status["ready"] else 503,
     )
+
+
+@require_POST
+def upload_model(request: HttpRequest):
+    uploaded_model = request.FILES.get("model")
+    if uploaded_model is None:
+        return JsonResponse({"detail": "Upload a YOLO .pt weights file."}, status=400)
+
+    try:
+        result = install_uploaded_model(uploaded_model)
+    except ValueError as error:
+        return JsonResponse({"detail": str(error)}, status=400)
+    except RuntimeError as error:
+        return JsonResponse({"detail": str(error)}, status=400)
+    except Exception as error:
+        return JsonResponse({"detail": f"Model install failed: {error}"}, status=500)
+
+    return JsonResponse(result, status=201)
 
 
 @require_POST
@@ -119,6 +148,9 @@ def list_reports(request: HttpRequest):
             "detections_count",
             "avg_confidence",
             "accuracy_m",
+            "distance_m",
+            "depth_cm",
+            "severity",
             "created_at",
         )[:200]
     )
@@ -137,12 +169,17 @@ def create_report(request: HttpRequest):
         longitude = float(payload.get("longitude"))
         detections_count = int(payload.get("detections_count", 0))
         avg_confidence = float(payload.get("avg_confidence", 0.0))
-        accuracy_m = payload.get("accuracy_m")
-        accuracy_m = None if accuracy_m in (None, "") else float(accuracy_m)
+        accuracy_m = _parse_optional_float(payload.get("accuracy_m"))
+        distance_m = _parse_optional_float(payload.get("distance_m"))
+        depth_cm = _parse_optional_float(payload.get("depth_cm"))
     except (TypeError, ValueError):
         return JsonResponse({"detail": "Latitude, longitude, and detection values are invalid."}, status=400)
 
     source = str(payload.get("source", "unknown")).strip() or "unknown"
+    valid_severities = {choice for choice, _label in PotholeReport.SEVERITY_CHOICES}
+    severity = str(payload.get("severity", "unknown")).strip().lower() or "unknown"
+    if severity not in valid_severities:
+        severity = "unknown"
 
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         return JsonResponse({"detail": "Latitude or longitude is out of range."}, status=400)
@@ -156,6 +193,9 @@ def create_report(request: HttpRequest):
         detections_count=detections_count,
         avg_confidence=max(0.0, min(1.0, avg_confidence)),
         accuracy_m=accuracy_m,
+        distance_m=distance_m,
+        depth_cm=depth_cm,
+        severity=severity,
     )
     return JsonResponse(
         {
@@ -166,6 +206,9 @@ def create_report(request: HttpRequest):
             "detections_count": report.detections_count,
             "avg_confidence": report.avg_confidence,
             "accuracy_m": report.accuracy_m,
+            "distance_m": report.distance_m,
+            "depth_cm": report.depth_cm,
+            "severity": report.severity,
             "created_at": report.created_at.isoformat(),
         },
         status=201,

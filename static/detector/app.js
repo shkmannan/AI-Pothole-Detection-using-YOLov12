@@ -1,10 +1,18 @@
 const API = {
   health: "/health/",
+  modelUpload: "/api/model/upload/",
   image: "/api/detect/image/",
   video: "/api/detect/video/",
   frame: "/api/detect/frame/",
   reports: "/api/reports/",
   createReport: "/api/reports/create/",
+};
+
+const severityRank = {
+  unknown: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
 };
 
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? "";
@@ -26,6 +34,7 @@ const state = {
   lastReportSignature: null,
   lastReportAt: 0,
   autoReportEnabled: true,
+  modelReady: false,
 };
 
 const logPanel = document.getElementById("logPanel");
@@ -35,6 +44,9 @@ const resultsBadge = document.getElementById("resultsBadge");
 const apiStatus = document.getElementById("apiStatus");
 const confidence = document.getElementById("confidence");
 const confidenceValue = document.getElementById("confidenceValue");
+const modelInput = document.getElementById("modelInput");
+const modelUpload = document.getElementById("modelUpload");
+const modelStatusPreview = document.getElementById("modelStatusPreview");
 
 const imageInput = document.getElementById("imageInput");
 const imagePreview = document.getElementById("imagePreview");
@@ -178,17 +190,17 @@ const drawDetectionBoxes = (
     const height = Math.max(0, (Number(box.y2 ?? 0) - Number(box.y1 ?? 0)) * scaleY);
     const label = `${detection.label ?? "pothole"} ${Number(detection.confidence ?? 0).toFixed(2)}`;
 
-    context.strokeStyle = "#12d18e";
-    context.fillStyle = "rgba(18, 209, 142, 0.16)";
+    context.strokeStyle = "#ff9f1a";
+    context.fillStyle = "rgba(255, 159, 26, 0.16)";
     context.strokeRect(x, y, width, height);
     context.fillRect(x, y, width, height);
 
     const textWidth = context.measureText(label).width;
     const textX = Math.max(0, Math.min(targetWidth - textWidth - 12, x));
     const textY = Math.max(0, y - fontSize - 10);
-    context.fillStyle = "#12d18e";
+    context.fillStyle = "#121212";
     context.fillRect(textX, textY, textWidth + 12, fontSize + 8);
-    context.fillStyle = "#041126";
+    context.fillStyle = "#ffffff";
     context.fillText(label, textX + 6, textY + 4);
   });
 };
@@ -228,6 +240,38 @@ const updateFilePreview = (container, file) => {
     return;
   }
   container.textContent = file.name;
+};
+
+const apiRequest = async (url, options = {}) => {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "X-CSRFToken": csrfToken,
+      ...(options.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    let detail = `Request failed (${response.status})`;
+    try {
+      const payload = await response.json();
+      if (payload.detail) {
+        detail = payload.detail;
+      }
+    } catch (_error) {
+      // Keep default error.
+    }
+    throw new Error(detail);
+  }
+  return response.json();
+};
+
+const renderAnnotatedImage = (dataUrl) => {
+  if (!dataUrl) {
+    resultPreview.textContent = "Annotated output appears here.";
+    return;
+  }
+  setPreviewContent(resultPreview, dataUrl, "img");
 };
 
 const renderPreviewWithDetections = (
@@ -276,38 +320,6 @@ const renderPreviewWithDetections = (
   }
 };
 
-const apiRequest = async (url, options = {}) => {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "X-CSRFToken": csrfToken,
-      ...(options.headers ?? {}),
-    },
-  });
-
-  if (!response.ok) {
-    let detail = `Request failed (${response.status})`;
-    try {
-      const payload = await response.json();
-      if (payload.detail) {
-        detail = payload.detail;
-      }
-    } catch (_error) {
-      // Keep default error.
-    }
-    throw new Error(detail);
-  }
-  return response.json();
-};
-
-const renderAnnotatedImage = (dataUrl) => {
-  if (!dataUrl) {
-    resultPreview.textContent = "Annotated output appears here.";
-    return;
-  }
-  setPreviewContent(resultPreview, dataUrl, "img");
-};
-
 const renderCameraDetections = (detections = [], sourceWidth = 0, sourceHeight = 0) => {
   state.cameraDetections = detections;
   state.cameraImageWidth = Number(sourceWidth) || cameraFeed.videoWidth || 0;
@@ -346,6 +358,24 @@ const formatTimestamp = (value) => {
   return date.toLocaleString();
 };
 
+const formatMetric = (value, digits = 2, unit = "") => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "N/A";
+  }
+  return `${Number(value).toFixed(digits)}${unit}`;
+};
+
+const formatDistance = (value) => (value === null || value === undefined ? "N/A" : `~${formatMetric(value, 2, " m")}`);
+const formatDepth = (value) => (value === null || value === undefined ? "N/A" : `~${formatMetric(value, 1, " cm")}`);
+const formatWidth = (value) => (value === null || value === undefined ? "N/A" : `~${formatMetric(value, 2, " m")}`);
+const formatSeverity = (value) => {
+  const normalized = String(value ?? "unknown").toLowerCase();
+  if (!normalized) {
+    return "Unknown";
+  }
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
 const setReportStatus = (message) => {
   reportStatus.textContent = message;
 };
@@ -354,17 +384,138 @@ const updateLocationStatus = (message) => {
   locationStatus.textContent = message;
 };
 
-const buildDetectionSummary = (source, count, avgConfidence = 0) => ({
-  source,
-  detectionsCount: Number(count ?? 0),
-  avgConfidence: Number(avgConfidence ?? 0),
-});
+const setModelStatusPreview = (message) => {
+  if (modelStatusPreview) {
+    modelStatusPreview.textContent = message;
+  }
+};
+
+const setDetectionControlsEnabled = (enabled) => {
+  state.modelReady = enabled;
+  [imageDetect, videoDetect, liveDetectStart, reportLatest].forEach((element) => {
+    if (element) {
+      element.disabled = !enabled;
+    }
+  });
+};
+
+const ensureModelReady = () => {
+  if (state.modelReady) {
+    return true;
+  }
+  log("Install a valid pothole .pt model first. Detection is disabled until the model is ready.", "error");
+  return false;
+};
+
+const refreshHealthStatus = async ({ silent = false } = {}) => {
+  try {
+    const data = await apiRequest(API.health);
+    state.modelReady = Boolean(data.model_ready);
+
+    if (data.model_ready) {
+      setDetectionControlsEnabled(true);
+      setApiStatus("API: Ready", "ok");
+      setModelStatusPreview(`Model ready: ${data.resolved_model_path}`);
+      if (!silent) {
+        log(`Model ready. Using: ${data.resolved_model_path}`, "success");
+      }
+      return data;
+    }
+
+    setDetectionControlsEnabled(false);
+    setApiStatus("API: Model missing", "error");
+    setModelStatusPreview(data.detail || "No pothole model is installed.");
+    if (!silent) {
+      log(`Model not ready: ${data.detail}`, "error");
+    }
+    return data;
+  } catch (error) {
+    setDetectionControlsEnabled(false);
+    setApiStatus("API: Offline", "error");
+    setModelStatusPreview("Could not reach the backend health check.");
+    if (!silent) {
+      log(`API health check failed: ${error.message}`, "error");
+    }
+    throw error;
+  }
+};
+
+const getTopDetection = (detections = []) => {
+  if (!detections.length) {
+    return null;
+  }
+  return detections.reduce((best, current) => {
+    if (!best) {
+      return current;
+    }
+    const bestRank = severityRank[String(best.severity ?? "unknown")] ?? 0;
+    const currentRank = severityRank[String(current.severity ?? "unknown")] ?? 0;
+    if (currentRank !== bestRank) {
+      return currentRank > bestRank ? current : best;
+    }
+    const bestScore = Number(best.severity_score ?? best.confidence ?? 0);
+    const currentScore = Number(current.severity_score ?? current.confidence ?? 0);
+    if (currentScore !== bestScore) {
+      return currentScore > bestScore ? current : best;
+    }
+    return Number(current.depth_cm ?? 0) > Number(best.depth_cm ?? 0) ? current : best;
+  }, null);
+};
+
+const buildDetectionSummary = (source, payload, countOverride = null) => {
+  const detections = payload.detections ?? [];
+  const topDetection = getTopDetection(detections);
+  const resolvedCount = countOverride ?? payload.count ?? 0;
+  return {
+    source,
+    detectionsCount: Number(resolvedCount ?? 0),
+    avgConfidence: Number(payload.avg_confidence ?? 0),
+    distanceM: payload.nearest_distance_m ?? topDetection?.distance_m ?? null,
+    depthCm: payload.max_depth_cm ?? topDetection?.depth_cm ?? null,
+    severity: payload.highest_severity ?? topDetection?.severity ?? (Number(resolvedCount ?? 0) > 0 ? "low" : "unknown"),
+  };
+};
+
+const describeDetection = (detection, index) =>
+  `#${index + 1}: ${formatSeverity(detection.severity)} | conf ${formatMetric(detection.confidence, 2)} | dist ${formatDistance(detection.distance_m)} | depth ${formatDepth(detection.depth_cm)} | width ${formatWidth(detection.width_m)}`;
+
+const buildDetectionItems = (payload, extras = []) => {
+  const items = [...extras];
+  const count = Number(payload.count ?? 0);
+  const avgConfidence = Number(payload.avg_confidence ?? 0);
+
+  items.push(`Detected potholes: ${count}`);
+  items.push(`Average confidence: ${formatMetric(avgConfidence, 2)}`);
+
+  if (payload.nearest_distance_m !== undefined) {
+    items.push(`Nearest estimated distance: ${formatDistance(payload.nearest_distance_m)}`);
+  }
+  if (payload.max_depth_cm !== undefined) {
+    items.push(`Deepest estimated pothole: ${formatDepth(payload.max_depth_cm)}`);
+  }
+  if (payload.highest_severity !== undefined) {
+    items.push(`Highest severity: ${formatSeverity(payload.highest_severity)}`);
+  }
+
+  const detections = payload.detections ?? [];
+  detections.slice(0, 3).forEach((detection, index) => {
+    items.push(describeDetection(detection, index));
+  });
+  if (detections.length > 3) {
+    items.push(`Additional detections not shown: ${detections.length - 3}`);
+  }
+
+  return items;
+};
 
 const reportSignature = (detection, location) =>
   [
     detection.source,
     detection.detectionsCount,
     detection.avgConfidence.toFixed(3),
+    detection.severity,
+    detection.distanceM === null ? "na" : Number(detection.distanceM).toFixed(2),
+    detection.depthCm === null ? "na" : Number(detection.depthCm).toFixed(1),
     location.latitude.toFixed(5),
     location.longitude.toFixed(5),
   ].join("|");
@@ -403,13 +554,15 @@ const renderReportFeed = (reports) => {
 
     const title = document.createElement("p");
     title.className = "report-feed__title";
-    title.textContent = `${report.detections_count} pothole(s) from ${report.source}`;
+    title.textContent = `${report.detections_count} pothole(s) from ${report.source} | ${formatSeverity(report.severity)}`;
 
     const meta = document.createElement("p");
     meta.className = "report-feed__meta";
     meta.textContent =
       `${Number(report.latitude).toFixed(5)}, ${Number(report.longitude).toFixed(5)} ` +
-      `| conf ${Number(report.avg_confidence ?? 0).toFixed(2)} ` +
+      `| conf ${formatMetric(report.avg_confidence ?? 0, 2)} ` +
+      `| dist ${formatDistance(report.distance_m)} ` +
+      `| depth ${formatDepth(report.depth_cm)} ` +
       `| ${formatTimestamp(report.created_at)}`;
 
     item.append(title, meta);
@@ -436,8 +589,11 @@ const renderReportsOnMap = (reports) => {
     const marker = window.L.marker([latitude, longitude]);
     marker.bindPopup(
       `<strong>${report.detections_count} pothole(s)</strong><br>` +
+        `Severity: ${formatSeverity(report.severity)}<br>` +
         `Source: ${report.source}<br>` +
-        `Confidence: ${Number(report.avg_confidence ?? 0).toFixed(2)}<br>` +
+        `Confidence: ${formatMetric(report.avg_confidence ?? 0, 2)}<br>` +
+        `Estimated distance: ${formatDistance(report.distance_m)}<br>` +
+        `Estimated depth: ${formatDepth(report.depth_cm)}<br>` +
         `Reported: ${formatTimestamp(report.created_at)}`,
     );
     marker.addTo(state.reportsLayer);
@@ -546,6 +702,9 @@ const saveReport = async (detection, { force = false } = {}) => {
     detections_count: detection.detectionsCount,
     avg_confidence: detection.avgConfidence,
     accuracy_m: state.currentLocation.accuracy,
+    severity: detection.severity,
+    distance_m: detection.distanceM,
+    depth_cm: detection.depthCm,
   };
 
   const report = await apiRequest(API.createReport, {
@@ -559,7 +718,7 @@ const saveReport = async (detection, { force = false } = {}) => {
   state.lastReportSignature = signature;
   state.lastReportAt = now;
   setReportStatus(
-    `Reported ${report.detections_count} pothole(s) at ${Number(report.latitude).toFixed(5)}, ${Number(report.longitude).toFixed(5)}.`,
+    `Reported ${report.detections_count} pothole(s) at ${Number(report.latitude).toFixed(5)}, ${Number(report.longitude).toFixed(5)} with ${formatSeverity(report.severity)} severity.`,
   );
   log("Municipality report saved.", "success");
   await loadReports({ silent: true });
@@ -582,7 +741,7 @@ const recordDetection = async (detection) => {
   state.latestDetection = detection;
   if (detection.detectionsCount > 0) {
     setReportStatus(
-      `Latest detection: ${detection.detectionsCount} pothole(s) from ${detection.source}.`,
+      `Latest detection: ${detection.detectionsCount} pothole(s) from ${detection.source} | ${formatSeverity(detection.severity)} | dist ${formatDistance(detection.distanceM)} | depth ${formatDepth(detection.depthCm)}.`,
     );
     await maybeAutoReport();
     return;
@@ -652,16 +811,14 @@ const runLiveDetection = async () => {
       annotated: Boolean((data.detections ?? []).length),
     });
     renderAnnotatedImage(data.annotated_image);
-    resultsBadge.textContent = "Live detection running";
-    setResults([
-      `Live detections: ${data.count ?? 0}`,
-      `Average confidence: ${(data.avg_confidence ?? 0).toFixed(2)}`,
-      `Bounding boxes drawn: ${(data.detections ?? []).length}`,
-      "Source: browser rear camera",
-    ]);
-    await recordDetection(
-      buildDetectionSummary("live-camera", data.count ?? 0, data.avg_confidence ?? 0),
+    resultsBadge.textContent = `Live detection | ${formatSeverity(data.highest_severity)}`;
+    setResults(
+      buildDetectionItems(data, [
+        "Source: browser rear camera",
+        "Metrics are local estimates based on box size and road contrast",
+      ]),
     );
+    await recordDetection(buildDetectionSummary("live-camera", data));
   } catch (error) {
     log(`Live detection failed: ${error.message}`, "error");
     stopLiveDetection();
@@ -715,11 +872,45 @@ imageInput.addEventListener("change", (event) => {
   updateFilePreview(imagePreview, event.target.files[0]);
 });
 
+modelInput.addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  setModelStatusPreview(file ? `Selected model: ${file.name}` : "No local pothole weights installed yet.");
+});
+
 videoInput.addEventListener("change", (event) => {
   updateFilePreview(videoPreview, event.target.files[0]);
 });
 
+modelUpload.addEventListener("click", async () => {
+  const file = modelInput.files[0];
+  if (!file) {
+    log("Select a .pt file before installing the model.", "error");
+    return;
+  }
+
+  const form = new FormData();
+  form.append("model", file);
+
+  log("Installing local model...");
+  try {
+    const data = await apiRequest(API.modelUpload, {
+      method: "POST",
+      body: form,
+    });
+    setModelStatusPreview(`Model ready: ${data.resolved_path}`);
+    await refreshHealthStatus({ silent: true });
+    log("Local pothole model installed successfully.", "success");
+  } catch (error) {
+    setDetectionControlsEnabled(false);
+    setModelStatusPreview(`Model install failed: ${error.message}`);
+    log(`Model install failed: ${error.message}`, "error");
+  }
+});
+
 imageDetect.addEventListener("click", async () => {
+  if (!ensureModelReady()) {
+    return;
+  }
   const file = imageInput.files[0];
   if (!file) {
     log("Select an image before running detection.", "error");
@@ -744,16 +935,14 @@ imageDetect.addEventListener("click", async () => {
       data.image_width,
       data.image_height,
     );
-    resultsBadge.textContent = "Image analyzed";
-    setResults([
-      `Filename: ${data.filename ?? file.name}`,
-      `Detected potholes: ${data.count ?? 0}`,
-      `Average confidence: ${(data.avg_confidence ?? 0).toFixed(2)}`,
-      `Bounding boxes drawn: ${(data.detections ?? []).length}`,
-    ]);
-    await recordDetection(
-      buildDetectionSummary("image-upload", data.count ?? 0, data.avg_confidence ?? 0),
+    resultsBadge.textContent = `Image analyzed | ${formatSeverity(data.highest_severity)}`;
+    setResults(
+      buildDetectionItems(data, [
+        `Filename: ${data.filename ?? file.name}`,
+        "Metrics are local estimates based on box size and road contrast",
+      ]),
     );
+    await recordDetection(buildDetectionSummary("image-upload", data));
     log("Image detection complete.", "success");
   } catch (error) {
     log(`Image detection failed: ${error.message}`, "error");
@@ -761,6 +950,9 @@ imageDetect.addEventListener("click", async () => {
 });
 
 videoDetect.addEventListener("click", async () => {
+  if (!ensureModelReady()) {
+    return;
+  }
   const file = videoInput.files[0];
   if (!file) {
     log("Select a video before running analysis.", "error");
@@ -784,17 +976,18 @@ videoDetect.addEventListener("click", async () => {
       data.preview_width,
       data.preview_height,
     );
-    resultsBadge.textContent = "Video analyzed";
-    setResults([
-      `Frames seen: ${data.frames_seen ?? 0}`,
-      `Frames processed: ${data.frames_processed ?? 0}`,
-      `Total pothole detections: ${data.count ?? 0}`,
-      `Peak potholes in one sampled frame: ${data.peak_detections ?? 0}`,
-      `Preview frame boxes: ${(data.preview_detections ?? []).length}`,
-      `Sampling stride: every ${data.stride ?? 1} frame(s)`,
-    ]);
+    resultsBadge.textContent = `Video analyzed | ${formatSeverity(data.highest_severity)}`;
+    setResults(
+      buildDetectionItems(data, [
+        `Frames seen: ${data.frames_seen ?? 0}`,
+        `Frames processed: ${data.frames_processed ?? 0}`,
+        `Total pothole detections: ${data.count ?? 0}`,
+        `Peak potholes in one sampled frame: ${data.peak_detections ?? 0}`,
+        `Sampling stride: every ${data.stride ?? 1} frame(s)`,
+      ]),
+    );
     await recordDetection(
-      buildDetectionSummary("video-upload", data.peak_detections ?? data.count ?? 0, 0),
+      buildDetectionSummary("video-upload", data, data.peak_detections ?? data.count ?? 0),
     );
     log("Video analysis complete.", "success");
   } catch (error) {
@@ -828,6 +1021,9 @@ cameraStop.addEventListener("click", () => {
 });
 
 liveDetectStart.addEventListener("click", async () => {
+  if (!ensureModelReady()) {
+    return;
+  }
   try {
     if (!state.stream) {
       await startPhoneCamera();
@@ -853,12 +1049,9 @@ liveDetectStop.addEventListener("click", () => {
 healthButton.addEventListener("click", async () => {
   log("Checking API health...");
   try {
-    const data = await apiRequest(API.health);
-    setApiStatus(`API: ${data.status}`, "ok");
-    log(`API is healthy. Model path: ${data.model_path}`, "success");
+    await refreshHealthStatus();
   } catch (error) {
-    setApiStatus("API: Offline", "error");
-    log(`API health check failed: ${error.message}`, "error");
+    // refreshHealthStatus logs details.
   }
 });
 
@@ -914,6 +1107,7 @@ runDemo.addEventListener("click", () => {
     "Camera source: current phone browser session",
     "HTTPS required for camera permissions on production",
     "Live frames are uploaded to Django for YOLO inference",
+    "Estimated distance and depth are derived locally from pothole boxes and road contrast",
   ]);
   resultsBadge.textContent = "Demo mode";
   resultPreview.textContent = "Run a real scan to see annotated output.";
@@ -922,9 +1116,9 @@ runDemo.addEventListener("click", () => {
 
 downloadReport.addEventListener("click", () => {
   const content = [
-    "segment,source,severity,confidence",
-    "NH-48,phone-camera,high,0.78",
-    "Ward-12,survey-video,medium,0.61",
+    "segment,source,severity,confidence,distance_m,depth_cm",
+    "NH-48,phone-camera,high,0.78,4.30,8.60",
+    "Ward-12,survey-video,medium,0.61,6.10,5.20",
   ].join("\n");
   const blob = new Blob([content], { type: "text/csv" });
   const link = document.createElement("a");
@@ -942,6 +1136,7 @@ window.addEventListener("resize", () => {
 
 ensureMap();
 loadReports({ silent: true });
+refreshHealthStatus({ silent: true });
 setReportStatus("Auto-report is enabled for new pothole detections.");
 showCameraState({ streamActive: false, annotated: false, message: "Camera idle" });
 log("Open this page on a phone to use that device's camera.");

@@ -476,6 +476,12 @@ input[type="range"] {
   margin-bottom: 18px;
 }
 
+.result-note {
+  color: var(--muted);
+  font-size: 0.84rem;
+  margin-bottom: 16px;
+}
+
 .badge {
   background: #dbebff;
   color: #2c4d89;
@@ -523,6 +529,13 @@ input[type="range"] {
 .btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 22px rgba(239, 91, 63, 0.35);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn--ghost {
