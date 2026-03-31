@@ -15,7 +15,17 @@ const severityRank = {
   high: 3,
 };
 
-const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? "";
+const readCookie = (name) => {
+  const prefix = `${name}=`;
+  return document.cookie
+    .split(";")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith(prefix))
+    ?.slice(prefix.length) ?? "";
+};
+
+const getCsrfToken = () =>
+  document.querySelector('meta[name="csrf-token"]')?.content?.trim() || readCookie("csrftoken");
 
 const state = {
   stream: null,
@@ -244,9 +254,10 @@ const updateFilePreview = (container, file) => {
 
 const apiRequest = async (url, options = {}) => {
   const response = await fetch(url, {
+    credentials: "same-origin",
     ...options,
     headers: {
-      "X-CSRFToken": csrfToken,
+      "X-CSRFToken": getCsrfToken(),
       ...(options.headers ?? {}),
     },
   });
@@ -776,6 +787,64 @@ const captureFrameBlob = () =>
     );
   });
 
+const waitForCameraFrameReady = (timeoutMs = 4000) =>
+  new Promise((resolve, reject) => {
+    if (cameraFeed.videoWidth && cameraFeed.videoHeight) {
+      resolve();
+      return;
+    }
+
+    const startedAt = Date.now();
+    let settled = false;
+    let intervalId = null;
+    let timeoutId = null;
+
+    const cleanup = () => {
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      cameraFeed.removeEventListener("loadedmetadata", handleReady);
+      cameraFeed.removeEventListener("canplay", handleReady);
+      cameraFeed.removeEventListener("playing", handleReady);
+    };
+
+    const finish = (callback) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      callback();
+    };
+
+    const handleReady = () => {
+      if (cameraFeed.videoWidth && cameraFeed.videoHeight) {
+        finish(resolve);
+      }
+    };
+
+    intervalId = window.setInterval(() => {
+      if (cameraFeed.videoWidth && cameraFeed.videoHeight) {
+        finish(resolve);
+        return;
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        finish(() => reject(new Error("Camera is not ready yet. Wait a moment and try again.")));
+      }
+    }, 120);
+
+    timeoutId = window.setTimeout(() => {
+      finish(() => reject(new Error("Camera is not ready yet. Wait a moment and try again.")));
+    }, timeoutMs);
+
+    cameraFeed.addEventListener("loadedmetadata", handleReady);
+    cameraFeed.addEventListener("canplay", handleReady);
+    cameraFeed.addEventListener("playing", handleReady);
+  });
+
 const stopLiveDetection = () => {
   state.liveDetection = false;
   state.isSendingFrame = false;
@@ -795,6 +864,7 @@ const runLiveDetection = async () => {
 
   state.isSendingFrame = true;
   try {
+    await waitForCameraFrameReady();
     const frameBlob = await captureFrameBlob();
     const form = new FormData();
     form.append("frame", frameBlob, "camera-frame.jpg");
@@ -833,6 +903,7 @@ const runLiveDetection = async () => {
 
 const startPhoneCamera = async () => {
   if (state.stream) {
+    await waitForCameraFrameReady().catch(() => {});
     showCameraState({ streamActive: true, annotated: Boolean(state.cameraDetections.length) });
     return;
   }
@@ -849,6 +920,7 @@ const startPhoneCamera = async () => {
   state.stream = await navigator.mediaDevices.getUserMedia(constraints);
   cameraFeed.srcObject = state.stream;
   await cameraFeed.play();
+  await waitForCameraFrameReady();
   resetCameraDetections();
   showCameraState({ streamActive: true, annotated: false });
 };

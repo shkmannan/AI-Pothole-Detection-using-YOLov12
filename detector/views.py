@@ -3,6 +3,7 @@ import json
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import render
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import PotholeReport
@@ -30,6 +31,7 @@ def _parse_optional_float(value):
 
 
 @require_GET
+@ensure_csrf_cookie
 def index(request: HttpRequest):
     return render(
         request,

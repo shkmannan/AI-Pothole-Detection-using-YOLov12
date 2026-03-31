@@ -4,16 +4,27 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _split_csv_env(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-dev-key")
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-allowed_hosts = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost,testserver,.onrender.com")
-ALLOWED_HOSTS = [host.strip() for host in allowed_hosts.split(",") if host.strip()]
+allowed_hosts = _split_csv_env(
+    os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost,testserver,.onrender.com")
+)
+render_external_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if render_external_hostname and render_external_hostname not in allowed_hosts:
+    allowed_hosts.append(render_external_hostname)
+ALLOWED_HOSTS = allowed_hosts
 
-csrf_trusted_origins = os.getenv("CSRF_TRUSTED_ORIGINS", "")
-CSRF_TRUSTED_ORIGINS = [
-    origin.strip() for origin in csrf_trusted_origins.split(",") if origin.strip()
-]
+csrf_trusted_origins = _split_csv_env(os.getenv("CSRF_TRUSTED_ORIGINS", ""))
+if render_external_hostname:
+    render_origin = f"https://{render_external_hostname}"
+    if render_origin not in csrf_trusted_origins:
+        csrf_trusted_origins.append(render_origin)
+CSRF_TRUSTED_ORIGINS = csrf_trusted_origins
 
 INSTALLED_APPS = [
     "django.contrib.admin",
