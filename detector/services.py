@@ -1,4 +1,5 @@
 import base64
+import logging
 import shutil
 import tempfile
 import threading
@@ -11,9 +12,11 @@ from django.conf import settings
 from ultralytics import YOLO
 
 
+logger = logging.getLogger(__name__)
 _model = None
 _model_path = None
 _target_class_ids: tuple[int, ...] = ()
+_model_metadata: dict[str, Any] = {}
 _model_lock = threading.Lock()
 _inference_lock = threading.Lock()
 _BOX_COLOR = (0, 140, 255)
@@ -71,6 +74,44 @@ def _model_names(model: YOLO) -> dict[int, str]:
     return {index: str(label) for index, label in enumerate(names)}
 
 
+def _checkpoint_diagnostics(model: YOLO) -> dict[str, Any]:
+    diagnostics = {
+        "task": getattr(model, "task", None),
+        "checkpoint_epoch": None,
+        "checkpoint_best_fitness": None,
+        "train_args_model": None,
+        "train_args_data": None,
+        "valid": True,
+        "detail": "",
+    }
+
+    checkpoint = getattr(model, "ckpt", None)
+    if not isinstance(checkpoint, dict):
+        return diagnostics
+
+    diagnostics["checkpoint_epoch"] = checkpoint.get("epoch")
+    diagnostics["checkpoint_best_fitness"] = checkpoint.get("best_fitness")
+
+    train_args = checkpoint.get("train_args", {})
+    if isinstance(train_args, dict):
+        diagnostics["train_args_model"] = train_args.get("model")
+        diagnostics["train_args_data"] = train_args.get("data")
+
+    if diagnostics["checkpoint_epoch"] == -1 and diagnostics["checkpoint_best_fitness"] is None:
+        diagnostics["valid"] = False
+        diagnostics["detail"] = (
+            "Configured YOLO model appears to be untrained or placeholder weights. "
+            f"task={diagnostics['task']}, "
+            f"epoch={diagnostics['checkpoint_epoch']}, "
+            f"best_fitness={diagnostics['checkpoint_best_fitness']}, "
+            f"train_model={diagnostics['train_args_model']}, "
+            f"train_data={diagnostics['train_args_data']}. "
+            "Upload a trained pothole .pt checkpoint or retrain the model."
+        )
+
+    return diagnostics
+
+
 def _resolve_target_class_ids(model: YOLO) -> tuple[int, ...]:
     label_map = _model_names(model)
     if len(label_map) == 1:
@@ -94,25 +135,31 @@ def _resolve_target_class_ids(model: YOLO) -> tuple[int, ...]:
 
 
 def _get_model() -> YOLO:
-    global _model, _model_path, _target_class_ids
+    global _model, _model_path, _target_class_ids, _model_metadata
     if _model is None:
         with _model_lock:
             if _model is None:
                 model_path = _resolve_model_path()
                 model = YOLO(str(model_path))
                 class_ids = _resolve_target_class_ids(model)
-                _model = model
+                metadata = _checkpoint_diagnostics(model)
                 _model_path = model_path
+                _model_metadata = metadata
+                if not metadata["valid"]:
+                    raise RuntimeError(metadata["detail"])
+                _model = model
                 _target_class_ids = class_ids
+                logger.info("Loaded YOLO model from %s with labels=%s", model_path, list(_model_names(model).values()))
     return _model
 
 
 def reset_model_cache() -> None:
-    global _model, _model_path, _target_class_ids
+    global _model, _model_path, _target_class_ids, _model_metadata
     with _model_lock:
         _model = None
         _model_path = None
         _target_class_ids = ()
+        _model_metadata = {}
 
 
 def _default_uploaded_model_path() -> Path:
@@ -135,6 +182,9 @@ def install_uploaded_model(file_obj: Any) -> dict[str, Any]:
     try:
         model = YOLO(str(temp_path))
         class_ids = _resolve_target_class_ids(model)
+        metadata = _checkpoint_diagnostics(model)
+        if not metadata["valid"]:
+            raise RuntimeError(metadata["detail"])
 
         backup_path = target_path.with_suffix(".pt.bak")
         if backup_path.exists():
@@ -153,16 +203,18 @@ def install_uploaded_model(file_obj: Any) -> dict[str, Any]:
             backup_path.unlink()
 
         with _model_lock:
-            global _model, _model_path, _target_class_ids
+            global _model, _model_path, _target_class_ids, _model_metadata
             _model = model
             _model_path = target_path
             _target_class_ids = class_ids
+            _model_metadata = metadata
 
         return {
             "ready": True,
             "resolved_path": str(target_path),
             "labels": list(_model_names(model).values()),
             "target_labels": list(settings.YOLO_TARGET_LABELS),
+            **metadata,
             "detail": "",
         }
     except Exception:
@@ -445,6 +497,14 @@ def _run_inference(frame: np.ndarray, confidence: float) -> dict[str, Any]:
         result = _get_model()(frame, conf=confidence, verbose=False)[0]
 
     annotated, count, avg_confidence, detections, detection_summary = _draw_detections(frame, result)
+    logger.info(
+        "Inference complete: count=%s avg_confidence=%s threshold=%s image=%sx%s",
+        count,
+        avg_confidence,
+        confidence,
+        int(frame.shape[1]),
+        int(frame.shape[0]),
+    )
     cv2.putText(
         annotated,
         f"Potholes: {count}",
@@ -458,6 +518,7 @@ def _run_inference(frame: np.ndarray, confidence: float) -> dict[str, Any]:
         "count": count,
         "avg_confidence": avg_confidence,
         "detections": detections,
+        "confidence_threshold": round(float(confidence), 4),
         **detection_summary,
         "annotated_image": _encode_image(annotated),
         "image_width": int(frame.shape[1]),
@@ -473,14 +534,16 @@ def get_model_status() -> dict[str, Any]:
             "resolved_path": str(_model_path),
             "labels": list(_model_names(model).values()),
             "target_labels": list(settings.YOLO_TARGET_LABELS),
+            **_model_metadata,
             "detail": "",
         }
     except Exception as error:
         return {
             "ready": False,
-            "resolved_path": None,
+            "resolved_path": str(_model_path) if _model_path else None,
             "labels": [],
             "target_labels": list(settings.YOLO_TARGET_LABELS),
+            **_model_metadata,
             "detail": str(error),
         }
 

@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
@@ -13,6 +14,9 @@ from .services import (
     infer_uploaded_image,
     install_uploaded_model,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_confidence(request: HttpRequest) -> float:
@@ -52,9 +56,15 @@ def health(request: HttpRequest):
             "app": "django",
             "model_path": settings.YOLO_MODEL_PATH,
             "resolved_model_path": model_status["resolved_path"],
+            "resolved_path": model_status["resolved_path"],
             "model_ready": model_status["ready"],
             "model_labels": model_status["labels"],
             "target_labels": model_status["target_labels"],
+            "task": model_status.get("task"),
+            "checkpoint_epoch": model_status.get("checkpoint_epoch"),
+            "checkpoint_best_fitness": model_status.get("checkpoint_best_fitness"),
+            "train_args_model": model_status.get("train_args_model"),
+            "train_args_data": model_status.get("train_args_data"),
             "detail": model_status["detail"],
         },
         status=200 if model_status["ready"] else 503,
@@ -67,15 +77,20 @@ def upload_model(request: HttpRequest):
     if uploaded_model is None:
         return JsonResponse({"detail": "Upload a YOLO .pt weights file."}, status=400)
 
+    logger.info("Model upload requested: filename=%s", getattr(uploaded_model, "name", "model.pt"))
     try:
         result = install_uploaded_model(uploaded_model)
     except ValueError as error:
+        logger.warning("Model upload rejected: %s", error)
         return JsonResponse({"detail": str(error)}, status=400)
     except RuntimeError as error:
+        logger.warning("Model upload failed validation: %s", error)
         return JsonResponse({"detail": str(error)}, status=400)
     except Exception as error:
+        logger.exception("Model install failed")
         return JsonResponse({"detail": f"Model install failed: {error}"}, status=500)
 
+    logger.info("Model upload completed: resolved_path=%s", result.get("resolved_path"))
     return JsonResponse(result, status=201)
 
 
@@ -85,17 +100,27 @@ def detect_image(request: HttpRequest):
     if uploaded_image is None:
         return JsonResponse({"detail": "Upload an image file."}, status=400)
 
+    logger.info(
+        "Image detection requested: filename=%s confidence=%s",
+        getattr(uploaded_image, "name", "image"),
+        request.POST.get("confidence", "0.4"),
+    )
     try:
         result = infer_uploaded_image(uploaded_image, _parse_confidence(request))
     except FileNotFoundError as error:
+        logger.exception("Image detection failed: missing model")
         return JsonResponse({"detail": str(error)}, status=500)
     except RuntimeError as error:
+        logger.exception("Image detection failed: invalid model")
         return JsonResponse({"detail": str(error)}, status=500)
     except ValueError as error:
+        logger.warning("Image detection rejected: %s", error)
         return JsonResponse({"detail": str(error)}, status=400)
     except Exception as error:
+        logger.exception("Image detection failed")
         return JsonResponse({"detail": f"Image detection failed: {error}"}, status=500)
 
+    logger.info("Image detection completed: filename=%s count=%s", result.get("filename"), result.get("count"))
     return JsonResponse(result)
 
 
@@ -105,17 +130,32 @@ def detect_video(request: HttpRequest):
     if uploaded_video is None:
         return JsonResponse({"detail": "Upload a video file."}, status=400)
 
+    logger.info(
+        "Video detection requested: filename=%s confidence=%s",
+        getattr(uploaded_video, "name", "video"),
+        request.POST.get("confidence", "0.4"),
+    )
     try:
         result = analyze_uploaded_video(uploaded_video, _parse_confidence(request))
     except FileNotFoundError as error:
+        logger.exception("Video detection failed: missing model")
         return JsonResponse({"detail": str(error)}, status=500)
     except RuntimeError as error:
+        logger.exception("Video detection failed: invalid model")
         return JsonResponse({"detail": str(error)}, status=500)
     except ValueError as error:
+        logger.warning("Video detection rejected: %s", error)
         return JsonResponse({"detail": str(error)}, status=400)
     except Exception as error:
+        logger.exception("Video detection failed")
         return JsonResponse({"detail": f"Video detection failed: {error}"}, status=500)
 
+    logger.info(
+        "Video detection completed: filename=%s frames_processed=%s count=%s",
+        getattr(uploaded_video, "name", "video"),
+        result.get("frames_processed"),
+        result.get("count"),
+    )
     return JsonResponse(result)
 
 
@@ -125,17 +165,23 @@ def detect_frame(request: HttpRequest):
     if uploaded_frame is None:
         return JsonResponse({"detail": "Upload a frame image."}, status=400)
 
+    logger.info("Live frame detection requested: confidence=%s", request.POST.get("confidence", "0.4"))
     try:
         result = infer_uploaded_image(uploaded_frame, _parse_confidence(request))
     except FileNotFoundError as error:
+        logger.exception("Live frame detection failed: missing model")
         return JsonResponse({"detail": str(error)}, status=500)
     except RuntimeError as error:
+        logger.exception("Live frame detection failed: invalid model")
         return JsonResponse({"detail": str(error)}, status=500)
     except ValueError as error:
+        logger.warning("Live frame detection rejected: %s", error)
         return JsonResponse({"detail": str(error)}, status=400)
     except Exception as error:
+        logger.exception("Live frame detection failed")
         return JsonResponse({"detail": f"Frame detection failed: {error}"}, status=500)
 
+    logger.info("Live frame detection completed: count=%s", result.get("count"))
     return JsonResponse(result)
 
 

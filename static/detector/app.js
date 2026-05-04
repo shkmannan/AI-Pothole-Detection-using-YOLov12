@@ -401,6 +401,20 @@ const setModelStatusPreview = (message) => {
   }
 };
 
+const formatModelSummary = (data) => {
+  const parts = [];
+  if (data.resolved_path) {
+    parts.push(`path ${data.resolved_path}`);
+  }
+  if (data.task) {
+    parts.push(`task ${data.task}`);
+  }
+  if (data.checkpoint_epoch !== null && data.checkpoint_epoch !== undefined) {
+    parts.push(`epoch ${data.checkpoint_epoch}`);
+  }
+  return parts.join(" | ");
+};
+
 const setDetectionControlsEnabled = (enabled) => {
   state.modelReady = enabled;
   [imageDetect, videoDetect, liveDetectStart, reportLatest].forEach((element) => {
@@ -426,15 +440,15 @@ const refreshHealthStatus = async ({ silent = false } = {}) => {
     if (data.model_ready) {
       setDetectionControlsEnabled(true);
       setApiStatus("API: Ready", "ok");
-      setModelStatusPreview(`Model ready: ${data.resolved_model_path}`);
+      setModelStatusPreview(`Model ready: ${formatModelSummary(data)}`);
       if (!silent) {
-        log(`Model ready. Using: ${data.resolved_model_path}`, "success");
+        log(`Model ready. ${formatModelSummary(data)}`, "success");
       }
       return data;
     }
 
     setDetectionControlsEnabled(false);
-    setApiStatus("API: Model missing", "error");
+    setApiStatus("API: Model invalid", "error");
     setModelStatusPreview(data.detail || "No pothole model is installed.");
     if (!silent) {
       log(`Model not ready: ${data.detail}`, "error");
@@ -1015,7 +1029,12 @@ imageDetect.addEventListener("click", async () => {
       ]),
     );
     await recordDetection(buildDetectionSummary("image-upload", data));
-    log("Image detection complete.", "success");
+    log(
+      Number(data.count ?? 0) > 0
+        ? `Image detection complete. Found ${data.count} pothole(s).`
+        : `Image detection complete. No potholes detected at confidence ${Number(data.confidence_threshold ?? confidence.value).toFixed(2)}.`,
+      Number(data.count ?? 0) > 0 ? "success" : "info",
+    );
   } catch (error) {
     log(`Image detection failed: ${error.message}`, "error");
   }
@@ -1061,7 +1080,12 @@ videoDetect.addEventListener("click", async () => {
     await recordDetection(
       buildDetectionSummary("video-upload", data, data.peak_detections ?? data.count ?? 0),
     );
-    log("Video analysis complete.", "success");
+    log(
+      Number(data.count ?? 0) > 0
+        ? `Video analysis complete. Found ${data.count} pothole detection(s) across sampled frames.`
+        : `Video analysis complete. No potholes detected at confidence ${Number(data.confidence_threshold ?? confidence.value).toFixed(2)}.`,
+      Number(data.count ?? 0) > 0 ? "success" : "info",
+    );
   } catch (error) {
     log(`Video analysis failed: ${error.message}`, "error");
   }
@@ -1208,7 +1232,7 @@ window.addEventListener("resize", () => {
 
 ensureMap();
 loadReports({ silent: true });
-refreshHealthStatus({ silent: true });
+refreshHealthStatus();
 setReportStatus("Auto-report is enabled for new pothole detections.");
 showCameraState({ streamActive: false, annotated: false, message: "Camera idle" });
 log("Open this page on a phone to use that device's camera.");
