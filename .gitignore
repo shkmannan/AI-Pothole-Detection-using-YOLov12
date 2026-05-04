@@ -23,6 +23,18 @@ runs/
 *.onnx
 weights/
 
+# Allow the single trained checkpoint used by Render deployments.
+!runs/
+!runs/detect/
+!runs/detect/pothole_model/
+!runs/detect/pothole_model/weights/
+!runs/detect/pothole_model/weights/best.pt
+!training_runs/
+!training_runs/detect/
+!training_runs/detect/pothole_model/
+!training_runs/detect/pothole_model/weights/
+!training_runs/detect/pothole_model/weights/best.pt
+
 # Jupyter
 .ipynb_checkpoints/
 

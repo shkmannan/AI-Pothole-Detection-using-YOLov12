@@ -1,110 +1,92 @@
 # AI-Pothole-Detection-using-YOLOv8
-🚧 Pothole Detection & Severity Analysis (YOLOv8 + Django)
-📌 Overview
 
-This project is a production-style pothole detection system built using YOLOv8, OpenCV, and Django, designed to work with real-world inputs including mobile browser camera streams, images, and videos.
+This project is a Django-based pothole detection app that runs YOLO inference on uploaded images,
+videos, and phone-camera frames from the browser.
 
-Unlike typical object detection demos, this system focuses on:
+## Features
 
-🌍 Real-world usability (mobile camera support)
-⚙️ End-to-end deployment (UI + backend in one service)
-📊 Actionable insights (severity, depth, distance estimation)
-🎯 Key Features
-🚀 Real-time pothole detection using YOLOv8
-📱 Phone camera integration via browser (no app required)
-🎥 Supports image, video, and live camera input
-📊 Severity classification: Low / Medium / High
-📏 Estimated pothole distance (m) and depth (cm)
-🌐 Fully integrated Django backend + UI deployment
-☁️ Ready for deployment on platforms like Render
-🧠 System Architecture
-🔹 Frontend (Browser)
-Uses navigator.mediaDevices.getUserMedia()
-Captures frames directly from the phone camera
-Sends frames to backend over HTTPS
-🔹 Backend (Django)
-Handles:
-Image/video uploads
-Live camera frame processing
-Runs YOLOv8 inference
-Returns:
-Bounding boxes
-Severity labels
-Distance & depth estimates
-🔹 Model
-Custom-trained YOLOv8 model on pothole dataset
-Filters detections using:
-YOLO_TARGET_LABELS = pothole, potholes
-⚙️ What Makes This Different
+- Django UI and API in one deployment
+- Image, video, and live phone-camera detection
+- Estimated pothole distance, depth, and severity
+- Shared map/report workflow for confirmed detections
+- Render deployment support
 
-Most YOLO projects:
+## Local run
 
-Run locally on static images
+1. Create and activate a virtual environment.
+2. Install dependencies:
 
-This system:
+```bash
+pip install -r requirements.txt
+```
 
-✅ Works on live phone camera
-✅ Handles real-time uploads + inference
-✅ Combines frontend + backend + ML in one pipeline
-✅ Simulates real deployment constraints
-🚧 Challenges & What Broke
-❌ 1. “Works locally, fails in real-world”
-Model accuracy dropped with:
-Lighting changes
-Camera angles
-Road textures
+3. Set environment variables from `.env.example`.
+4. Make sure a trained model exists at `training_runs/detect/pothole_model/weights/best.pt`,
+   or set `YOLO_MODEL_PATH` to another trained checkpoint.
+5. Start Django:
 
-✅ Fix:
+```bash
+python manage.py migrate
+python manage.py runserver
+```
 
-Improved dataset quality
-Better annotations
-Iterative retraining
-❌ 2. False Positives (patches, shadows)
-Non-pothole regions detected incorrectly
+6. Open `http://127.0.0.1:8000/`.
 
-✅ Fix:
+The default `yolov8n.pt` file is a generic COCO model and will not detect potholes correctly.
 
-Tuned confidence thresholds
-Added label filtering (YOLO_TARGET_LABELS)
-Refined training data
-❌ 3. Live Camera Integration
-Backend cannot directly access phone camera
+## Model behavior
 
-✅ Fix:
+- The app defaults to `training_runs/detect/pothole_model/weights/best.pt`.
+- `YOLO_TARGET_LABELS` defaults to `pothole,potholes,object,objects` so the bundled model's class
+  names are interpreted correctly.
+- The UI no longer uses runtime `.pt` upload. Model status is shown as read-only in the dashboard.
 
-Used browser camera (getUserMedia)
-Streamed frames via HTTPS to Django backend
-❌ 4. Model Not Loaded / Deployment Issues
-Default YOLO model didn’t detect potholes
+## Render deployment
 
-✅ Fix:
+- `render.yaml` defines the web service.
+- `Procfile` starts Gunicorn.
+- The default deployed model path is
+  `/opt/render/project/src/training_runs/detect/pothole_model/weights/best.pt`.
+- The build runs `python scripts/verify_model.py` so deployment fails early if the model is missing
+  or invalid.
 
-Enforced custom weights (best.pt)
-Added UI-based model upload system
-📊 Estimated Pothole Metrics
+Important: Render cannot access a physical phone camera from the server. The phone camera works
+because the browser on the phone captures frames and uploads them to Django over HTTPS.
 
-The system provides approximate:
+### Using the deployed app
 
-📏 Distance from camera (meters)
-🕳️ Depth (centimeters)
-⚠️ Severity classification
+1. Open your Render app URL in a browser.
+2. Wait for the dashboard health check to finish.
+3. Confirm the model status card says the pothole model is ready.
+4. For still images, upload a file in the Image detection card and click `Detect potholes`.
+5. For road clips, upload a file in the Video detection card and click `Analyze video`.
+6. For live detection, open the same Render URL on your phone, allow camera permission, tap
+   `Start camera`, then tap `Start live detection`.
 
-⚠️ Note:
-These are heuristic estimates based on:
+### Deploying the trained model to Render
 
-Bounding box size
-Frame position
-Local contrast sampling
+Because Render deploys from your repository, the trained checkpoint must also be in the repo.
 
-They are useful for:
+Track this file:
 
-Prioritization
-Monitoring
-But not a replacement for calibrated sensors.
-🛠️ Tech Stack
-Python
-YOLOv8 (Ultralytics)
-Django (Backend + UI)
-OpenCV
-JavaScript (Browser Camera API)
-NumPy / Pandas
+- `training_runs/detect/pothole_model/weights/best.pt`
+
+After training or replacing the checkpoint locally:
+
+```bash
+git add training_runs/detect/pothole_model/weights/best.pt
+git commit -m "Update bundled pothole model"
+git push
+```
+
+## Estimated pothole metrics
+
+The app returns approximate:
+
+- camera-to-pothole distance in meters
+- pothole depth in centimeters
+- severity labels: low, medium, high
+
+These values are heuristic estimates based on bounding-box size, image position, and road-contrast
+sampling around each detected pothole. They are useful for prioritization, but they are not a
+replacement for calibrated depth sensors or manual field measurement.

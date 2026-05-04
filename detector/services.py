@@ -1,6 +1,5 @@
 import base64
 import logging
-import shutil
 import tempfile
 import threading
 from pathlib import Path
@@ -33,6 +32,13 @@ _SEVERITY_RANK = {
 
 def _normalize_label(label: Any) -> str:
     return str(label).strip().lower().replace("-", " ").replace("_", " ")
+
+
+def _display_label(label: Any) -> str:
+    normalized = _normalize_label(label)
+    if normalized in {"object", "objects"}:
+        return "pothole"
+    return str(label)
 
 
 def _candidate_model_paths() -> list[Path]:
@@ -106,7 +112,7 @@ def _checkpoint_diagnostics(model: YOLO) -> dict[str, Any]:
             f"best_fitness={diagnostics['checkpoint_best_fitness']}, "
             f"train_model={diagnostics['train_args_model']}, "
             f"train_data={diagnostics['train_args_data']}. "
-            "Upload a trained pothole .pt checkpoint or retrain the model."
+            "Replace the default best.pt with a trained pothole checkpoint or retrain the model."
         )
 
     return diagnostics
@@ -130,7 +136,7 @@ def _resolve_target_class_ids(model: YOLO) -> tuple[int, ...]:
         "Configured YOLO model does not expose a pothole class. "
         f"Expected one of: {expected_labels}. "
         f"Model classes: {available_labels}. "
-        "Point YOLO_MODEL_PATH to the trained pothole weights."
+        "Point YOLO_MODEL_PATH to trained pothole weights or replace the default best.pt."
     )
 
 
@@ -160,66 +166,6 @@ def reset_model_cache() -> None:
         _model_path = None
         _target_class_ids = ()
         _model_metadata = {}
-
-
-def _default_uploaded_model_path() -> Path:
-    return Path(settings.YOLO_FALLBACK_MODEL_PATHS[0])
-
-
-def install_uploaded_model(file_obj: Any) -> dict[str, Any]:
-    filename = getattr(file_obj, "name", "model.pt")
-    if Path(filename).suffix.lower() != ".pt":
-        raise ValueError("Upload a YOLO weights file with a .pt extension.")
-
-    target_path = _default_uploaded_model_path()
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pt", dir=target_path.parent) as temp_file:
-        for chunk in file_obj.chunks():
-            temp_file.write(chunk)
-        temp_path = Path(temp_file.name)
-
-    try:
-        model = YOLO(str(temp_path))
-        class_ids = _resolve_target_class_ids(model)
-        metadata = _checkpoint_diagnostics(model)
-        if not metadata["valid"]:
-            raise RuntimeError(metadata["detail"])
-
-        backup_path = target_path.with_suffix(".pt.bak")
-        if backup_path.exists():
-            backup_path.unlink()
-        if target_path.exists():
-            shutil.move(str(target_path), str(backup_path))
-
-        try:
-            temp_path.replace(target_path)
-        except Exception:
-            if backup_path.exists():
-                backup_path.replace(target_path)
-            raise
-
-        if backup_path.exists():
-            backup_path.unlink()
-
-        with _model_lock:
-            global _model, _model_path, _target_class_ids, _model_metadata
-            _model = model
-            _model_path = target_path
-            _target_class_ids = class_ids
-            _model_metadata = metadata
-
-        return {
-            "ready": True,
-            "resolved_path": str(target_path),
-            "labels": list(_model_names(model).values()),
-            "target_labels": list(settings.YOLO_TARGET_LABELS),
-            **metadata,
-            "detail": "",
-        }
-    except Exception:
-        temp_path.unlink(missing_ok=True)
-        raise
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -427,7 +373,7 @@ def _draw_detections(
 
             confidence = float(box.conf.item())
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            label = str(label_map.get(class_id, "pothole"))
+            label = _display_label(label_map.get(class_id, "pothole"))
             metrics = _estimate_pothole_metrics(frame, x1, y1, x2, y2, confidence)
 
             detection = {

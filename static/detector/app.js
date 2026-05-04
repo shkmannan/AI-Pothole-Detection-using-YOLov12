@@ -1,6 +1,5 @@
 const API = {
   health: "/health/",
-  modelUpload: "/api/model/upload/",
   image: "/api/detect/image/",
   video: "/api/detect/video/",
   frame: "/api/detect/frame/",
@@ -54,8 +53,6 @@ const resultsBadge = document.getElementById("resultsBadge");
 const apiStatus = document.getElementById("apiStatus");
 const confidence = document.getElementById("confidence");
 const confidenceValue = document.getElementById("confidenceValue");
-const modelInput = document.getElementById("modelInput");
-const modelUpload = document.getElementById("modelUpload");
 const modelStatusPreview = document.getElementById("modelStatusPreview");
 
 const imageInput = document.getElementById("imageInput");
@@ -253,16 +250,18 @@ const updateFilePreview = (container, file) => {
 };
 
 const apiRequest = async (url, options = {}) => {
+  const { allowStatuses = [], ...fetchOptions } = options;
   const response = await fetch(url, {
     credentials: "same-origin",
-    ...options,
+    ...fetchOptions,
     headers: {
       "X-CSRFToken": getCsrfToken(),
-      ...(options.headers ?? {}),
+      ...(fetchOptions.headers ?? {}),
     },
   });
 
-  if (!response.ok) {
+  const isAllowedErrorStatus = allowStatuses.includes(response.status);
+  if (!response.ok && !isAllowedErrorStatus) {
     let detail = `Request failed (${response.status})`;
     try {
       const payload = await response.json();
@@ -428,13 +427,13 @@ const ensureModelReady = () => {
   if (state.modelReady) {
     return true;
   }
-  log("Install a valid pothole .pt model first. Detection is disabled until the model is ready.", "error");
+  log("Train or place a valid pothole model at the default path first. Detection is disabled until the model is ready.", "error");
   return false;
 };
 
 const refreshHealthStatus = async ({ silent = false } = {}) => {
   try {
-    const data = await apiRequest(API.health);
+    const data = await apiRequest(API.health, { allowStatuses: [503] });
     state.modelReady = Boolean(data.model_ready);
 
     if (data.model_ready) {
@@ -958,39 +957,8 @@ imageInput.addEventListener("change", (event) => {
   updateFilePreview(imagePreview, event.target.files[0]);
 });
 
-modelInput.addEventListener("change", (event) => {
-  const file = event.target.files[0];
-  setModelStatusPreview(file ? `Selected model: ${file.name}` : "No local pothole weights installed yet.");
-});
-
 videoInput.addEventListener("change", (event) => {
   updateFilePreview(videoPreview, event.target.files[0]);
-});
-
-modelUpload.addEventListener("click", async () => {
-  const file = modelInput.files[0];
-  if (!file) {
-    log("Select a .pt file before installing the model.", "error");
-    return;
-  }
-
-  const form = new FormData();
-  form.append("model", file);
-
-  log("Installing local model...");
-  try {
-    const data = await apiRequest(API.modelUpload, {
-      method: "POST",
-      body: form,
-    });
-    setModelStatusPreview(`Model ready: ${data.resolved_path}`);
-    await refreshHealthStatus({ silent: true });
-    log("Local pothole model installed successfully.", "success");
-  } catch (error) {
-    setDetectionControlsEnabled(false);
-    setModelStatusPreview(`Model install failed: ${error.message}`);
-    log(`Model install failed: ${error.message}`, "error");
-  }
 });
 
 imageDetect.addEventListener("click", async () => {
@@ -1232,6 +1200,7 @@ window.addEventListener("resize", () => {
 
 ensureMap();
 loadReports({ silent: true });
+setDetectionControlsEnabled(false);
 refreshHealthStatus();
 setReportStatus("Auto-report is enabled for new pothole detections.");
 showCameraState({ streamActive: false, annotated: false, message: "Camera idle" });

@@ -12,7 +12,6 @@ from .services import (
     analyze_uploaded_video,
     get_model_status,
     infer_uploaded_image,
-    install_uploaded_model,
 )
 
 
@@ -20,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_confidence(request: HttpRequest) -> float:
-    raw_value = request.POST.get("confidence", "0.4")
+    raw_value = request.POST.get("confidence", "0.25")
     try:
         confidence = float(raw_value)
     except (TypeError, ValueError):
-        confidence = 0.4
+        confidence = 0.25
     return max(0.0, min(1.0, confidence))
 
 
@@ -72,29 +71,6 @@ def health(request: HttpRequest):
 
 
 @require_POST
-def upload_model(request: HttpRequest):
-    uploaded_model = request.FILES.get("model")
-    if uploaded_model is None:
-        return JsonResponse({"detail": "Upload a YOLO .pt weights file."}, status=400)
-
-    logger.info("Model upload requested: filename=%s", getattr(uploaded_model, "name", "model.pt"))
-    try:
-        result = install_uploaded_model(uploaded_model)
-    except ValueError as error:
-        logger.warning("Model upload rejected: %s", error)
-        return JsonResponse({"detail": str(error)}, status=400)
-    except RuntimeError as error:
-        logger.warning("Model upload failed validation: %s", error)
-        return JsonResponse({"detail": str(error)}, status=400)
-    except Exception as error:
-        logger.exception("Model install failed")
-        return JsonResponse({"detail": f"Model install failed: {error}"}, status=500)
-
-    logger.info("Model upload completed: resolved_path=%s", result.get("resolved_path"))
-    return JsonResponse(result, status=201)
-
-
-@require_POST
 def detect_image(request: HttpRequest):
     uploaded_image = request.FILES.get("image")
     if uploaded_image is None:
@@ -103,7 +79,7 @@ def detect_image(request: HttpRequest):
     logger.info(
         "Image detection requested: filename=%s confidence=%s",
         getattr(uploaded_image, "name", "image"),
-        request.POST.get("confidence", "0.4"),
+        request.POST.get("confidence", "0.25"),
     )
     try:
         result = infer_uploaded_image(uploaded_image, _parse_confidence(request))
@@ -133,7 +109,7 @@ def detect_video(request: HttpRequest):
     logger.info(
         "Video detection requested: filename=%s confidence=%s",
         getattr(uploaded_video, "name", "video"),
-        request.POST.get("confidence", "0.4"),
+        request.POST.get("confidence", "0.25"),
     )
     try:
         result = analyze_uploaded_video(uploaded_video, _parse_confidence(request))
@@ -165,7 +141,7 @@ def detect_frame(request: HttpRequest):
     if uploaded_frame is None:
         return JsonResponse({"detail": "Upload a frame image."}, status=400)
 
-    logger.info("Live frame detection requested: confidence=%s", request.POST.get("confidence", "0.4"))
+    logger.info("Live frame detection requested: confidence=%s", request.POST.get("confidence", "0.25"))
     try:
         result = infer_uploaded_image(uploaded_frame, _parse_confidence(request))
     except FileNotFoundError as error:

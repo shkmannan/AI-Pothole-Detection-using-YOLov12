@@ -3,7 +3,7 @@ services:
     name: roadsight
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python manage.py migrate --noinput && python manage.py collectstatic --noinput
+    buildCommand: pip install -r requirements.txt && python manage.py migrate --noinput && python scripts/verify_model.py && python manage.py collectstatic --noinput
     startCommand: gunicorn roadsight.wsgi:application --bind 0.0.0.0:$PORT --log-file -
     envVars:
       - key: DJANGO_SECRET_KEY
@@ -15,8 +15,8 @@ services:
       - key: CSRF_TRUSTED_ORIGINS
         value: "https://*.onrender.com"
       - key: YOLO_MODEL_PATH
-        value: /opt/render/project/src/runs/detect/pothole_model/weights/best.pt
+        value: /opt/render/project/src/training_runs/detect/pothole_model/weights/best.pt
       - key: YOLO_TARGET_LABELS
-        value: pothole,potholes
+        value: pothole,potholes,object,objects
       - key: VIDEO_FRAME_STRIDE
         value: "5"
